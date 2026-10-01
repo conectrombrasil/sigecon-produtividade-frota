@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Produtividade em Campo</title>
+<meta name="theme-color" content="#0B1929"/>
+<link rel="manifest" href="manifest.json"/>
+<link rel="icon" href="icone.svg" type="image/svg+xml"/>
+<link rel="apple-touch-icon" href="icone-180.png"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="Produtividade"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<script>
+(function(){
+  let t = null;
+  try { t = localStorage.getItem('fc_tema'); } catch (e) {}
+  if (t !== 'claro' && t !== 'escuro') {
+    const v = document.documentElement.getAttribute('data-theme');
+    if (v === 'light') t = 'claro'; else if (v === 'dark') t = 'escuro';
+    else t = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'claro' : 'escuro';
+  }
+  document.documentElement.setAttribute('data-tema', t);
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute('content', t === 'claro' ? '#FFFFFF' : '#0B1929');
+})();
+</script>
+<style>
+
+  :root{
+    --navy:#0A1624; --navy2:#11223A; --navy3:#182F4C; --navy4:#21406A;
+    --blue:#2E7BC4; --blue2:#5AA6EE; --orange:#F15A24; --orange-dark:#D9481A;
+    --text:#EEF3F8; --text2:#9DB4CA; --text3:#64829E;
+    --border:rgba(120,165,210,0.16); --border2:rgba(120,165,210,0.30);
+    --green:#2ECC8A; --red:#E05555; --amber:#E0A830;
+    --topo-h:60px; --raio:16px;
+    --sombra:0 6px 18px rgba(0,0,0,.22);
+    --safe-top:env(safe-area-inset-top,0px); --safe-bot:env(safe-area-inset-bottom,0px);
+    --ok-txt:#7be8bc; --err-txt:#ff9a9a; --warn-txt:#ffd27a; --info-txt:#8fc4f5; --lar-txt:#ffc09a;
+    --topo-bg:rgba(17,34,58,.94); --navy-0:rgba(10,22,36,0);
+    --vazio-hora:rgba(120,165,210,.07);
+    color-scheme:dark;
+    box-sizing:border-box;
+    padding-top:var(--safe-top);
+  }
+  html{scroll-padding-top:var(--safe-top);}
+  @media (prefers-color-scheme: light){
+    :root:not([data-tema]){ --navy:#EEF2F7; --navy2:#FFFFFF; --text:#0E1B2B; }
+  }
+  :root[data-tema="claro"]{
+    --navy:#EEF2F7; --navy2:#FFFFFF; --navy3:#F1F4F8; --navy4:#E1E8F0;
+    --blue2:#1F6FB8; --text:#0E1B2B; --text2:#46607A; --text3:#748AA1;
+    --border:rgba(14,40,70,0.10); --border2:rgba(14,40,70,0.20);
+    --sombra:0 4px 14px rgba(15,35,60,.10);
+    --ok-txt:#0B7A50; --err-txt:#C02F2F; --warn-txt:#8A5D00; --info-txt:#1A62A8; --lar-txt:#C2410C;
+    --topo-bg:rgba(255,255,255,.94); --navy-0:rgba(238,242,247,0);
+    --vazio-hora:rgba(14,40,70,.05);
+    color-scheme:light;
+  }
+  :root[data-tema="claro"] .card,:root[data-tema="claro"] .secao-opcional{box-shadow:0 1px 3px rgba(15,35,60,.07);}
+  :root[data-tema="claro"] .modal-overlay{background:rgba(10,22,36,.40);}
+  :root[data-tema="claro"] .passo.feito .bola{color:#fff;}
+  .ic-sol{display:none;} :root[data-tema="claro"] .ic-sol{display:block;} :root[data-tema="claro"] .ic-lua{display:none;}
+
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{min-height:100%;}
+  body{font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:var(--navy);color:var(--text);
+    overscroll-behavior-y:contain;-webkit-font-smoothing:antialiased;line-height:1.35;transition:background-color .2s,color .2s;}
+  button,input,select,textarea{font-family:inherit;}
+  button{touch-action:manipulation;}
+  :focus-visible{outline:2px solid var(--blue2);outline-offset:2px;}
+  svg.ic{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+  .tela{display:none;min-height:100%;flex-direction:column;}
+  .tela.ativa{display:flex;animation:entrar .18s ease-out;}
+  @keyframes entrar{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  @media (prefers-reduced-motion: reduce){ *{animation:none !important;transition:none !important;} }
+
+  /* ===== Topo ===== */
+  .topo{position:sticky;top:var(--safe-top);z-index:20;background:var(--topo-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;height:var(--topo-h);padding:0 8px;}
+  .topo-voltar,.topo-icone{width:44px;height:44px;border-radius:12px;background:none;border:none;color:var(--text);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+  .topo-voltar:active,.topo-icone:active{background:rgba(127,127,127,.12);}
+  .topo-textos{flex:1;padding:0 6px;min-width:0;}
+  .topo-titulo{font-weight:700;font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.1px;}
+  .topo-sub{font-size:12px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;}
+  button.topo-textos{background:none;border:none;color:inherit;text-align:left;cursor:pointer;border-radius:10px;padding:4px 8px;}
+  button.topo-textos:active{background:rgba(127,127,127,.10);}
+  .topo-sub .troca{color:var(--blue2);font-weight:700;}
+
+  /* ===== Barra de envio ===== */
+  .status-barra{padding:9px 16px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;}
+  .status-barra:empty{display:none;}
+  .status-barra.offline{background:rgba(224,85,85,0.16);color:var(--err-txt);}
+  .status-barra.pendente{background:rgba(224,168,48,0.16);color:var(--warn-txt);}
+  .status-barra.ok{color:var(--ok-txt);font-size:11.5px;padding:6px 16px;}
+  .status-barra button{margin-left:auto;background:rgba(127,127,127,0.18);border:none;color:inherit;
+    padding:8px 14px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;}
+
+  .conteudo{flex:1;padding:14px 16px calc(112px + var(--safe-bot));width:100%;}
+  .conteudo-form{padding-bottom:0;}
+
+  /* ===== Campos ===== */
+  .campo{width:100%;margin-bottom:14px;}
+  .campo input,.campo select,.campo textarea{width:100%;background:var(--navy2);border:1px solid var(--border2);border-radius:12px;
+    padding:13px 14px;color:var(--text);font-size:16px;min-height:50px;-webkit-appearance:none;appearance:none;}
+  .campo select{padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239DB4CA' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;}
+  .campo select option{background:var(--navy2);color:var(--text);}
+  .campo input:focus,.campo select:focus,.campo textarea:focus{outline:none;border-color:var(--blue2);box-shadow:0 0 0 3px rgba(90,166,238,.18);}
+  .campo input:disabled,.campo textarea:disabled{opacity:.6;}
+  .campo textarea{min-height:80px;resize:vertical;}
+  .rotulo{font-size:12.5px;color:var(--text2);margin:12px 0 6px;display:block;font-weight:600;}
+  .campo .rotulo{margin-top:0;}
+  .linha2{display:flex;gap:10px;}
+  .linha2 > .campo{flex:1;min-width:0;}
+  .ajuda{font-size:12px;color:var(--text3);margin:-8px 2px 14px;line-height:1.45;}
+  .ajuda.alerta{color:var(--warn-txt);}
+
+  .btn{width:100%;background:var(--orange);border:none;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;
+    font-size:16px;min-height:52px;padding:14px;border-radius:14px;cursor:pointer;box-shadow:0 6px 16px rgba(241,90,36,.25);transition:transform .08s;}
+  .btn:active{background:var(--orange-dark);transform:scale(.985);}
+  .btn:disabled{opacity:.55;}
+  .btn-secundario{background:var(--navy3);border:1px solid var(--border2);color:var(--text);box-shadow:none;}
+  .btn-secundario:active{background:var(--navy4);}
+  .btn-linha{display:flex;gap:8px;}
+  .btn-linha .btn{flex:1;}
+  .btn-linha .btn-secundario{flex:0 0 auto;width:auto;padding:14px 18px;}
+  .erro-msg{color:var(--err-txt);font-size:13px;margin-bottom:10px;text-align:center;}
+  .erro-msg:empty{display:none;}
+
+  .barra-acao{position:sticky;bottom:0;z-index:10;margin:18px -16px 0;padding:14px 16px calc(14px + var(--safe-bot));
+    background:linear-gradient(to bottom,var(--navy-0),var(--navy) 26%);}
+
+  /* ===== Home ===== */
+  .home-ferramentas{position:sticky;top:calc(var(--topo-h) + var(--safe-top));z-index:15;background:var(--navy);padding:12px 16px 2px;}
+  .busca{display:flex;align-items:center;gap:8px;background:var(--navy2);border:1px solid var(--border2);border-radius:12px;padding:0 12px;color:var(--text3);}
+  .busca:focus-within{border-color:var(--blue2);}
+  .busca input{flex:1;background:none;border:none;color:var(--text);font-size:16px;height:46px;min-width:0;}
+  .busca input:focus{outline:none;}
+  .filtros{display:flex;gap:8px;overflow-x:auto;padding:10px 16px;margin:0 -16px;scrollbar-width:none;}
+  .filtros::-webkit-scrollbar{display:none;}
+  .chip-filtro{flex-shrink:0;background:var(--navy2);border:1px solid var(--border2);color:var(--text2);display:flex;align-items:center;gap:6px;
+    height:36px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .chip-filtro .chip-n{background:rgba(127,127,127,.14);border-radius:999px;padding:1px 7px;font-size:11px;}
+  .chip-filtro.ativo{background:rgba(241,90,36,0.18);border-color:var(--orange);color:var(--lar-txt);}
+
+  .faltam{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:rgba(46,123,196,.12);border:1px solid rgba(90,166,238,.35);
+    border-radius:var(--raio);padding:14px 14px 14px 16px;color:var(--text);cursor:pointer;margin-bottom:6px;}
+  .faltam:active{background:rgba(46,123,196,.2);}
+  .faltam-num{font-size:28px;font-weight:800;color:var(--info-txt);min-width:34px;text-align:center;letter-spacing:-.5px;}
+  .faltam-txt{flex:1;font-size:14px;font-weight:700;}
+  .faltam-txt small{display:block;font-weight:500;font-size:12.5px;color:var(--text2);margin-top:2px;}
+  .faltam.completo{background:rgba(46,204,138,.10);border-color:rgba(46,204,138,.4);cursor:default;}
+  .faltam.completo .faltam-num{color:var(--ok-txt);}
+
+  /* ===== Cards ===== */
+  .card{background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);padding:15px 14px 14px 16px;margin-bottom:12px;
+    cursor:pointer;transition:transform .08s,background .15s;position:relative;display:block;width:100%;text-align:left;color:var(--text);font-size:inherit;}
+  .card:active{background:var(--navy3);transform:scale(.99);}
+  .card-titulo{font-weight:700;font-size:15.5px;letter-spacing:-.1px;}
+  .card-sub{font-size:13px;color:var(--text2);margin-top:3px;}
+  .card-linha{display:flex;align-items:center;gap:10px;}
+  .card-seta{color:var(--text3);display:flex;}
+  .card-topo-linha{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+  .card-rodape{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text2);}
+  .card-rodape b{color:var(--text);}
+  .card-rdo::before{content:'';position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;background:var(--text3);}
+  .card-rdo.sy-rascunho::before{background:var(--amber);}
+  .card-rdo.sy-pendente::before{background:var(--blue2);}
+  .card-rdo.sy-enviado::before{background:var(--green);}
+  .card-rdo.travado::before{background:var(--text3);}
+  .card.selecionado{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange) inset;}
+  .equip-ic{width:44px;height:44px;border-radius:12px;background:var(--navy3);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+
+  /* Régua miniatura (24h) */
+  .regua-mini{display:flex;gap:2px;margin-top:10px;}
+  .regua-mini i{flex:1;height:7px;border-radius:2px;background:var(--vazio-hora);}
+  .regua-mini-eixo{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:3px;}
+
+  .selo{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;}
+  .selo-rascunho{background:rgba(224,168,48,0.18);color:var(--warn-txt);}
+  .selo-enviado{background:rgba(46,204,138,0.16);color:var(--ok-txt);}
+  .selo-erro{background:rgba(224,85,85,0.18);color:var(--err-txt);}
+  .selo-info{background:rgba(46,123,196,0.22);color:var(--info-txt);}
+  .selo-neutro{background:rgba(138,165,190,0.16);color:var(--text2);}
+  .vazio{text-align:center;padding:48px 24px;color:var(--text3);font-size:14px;line-height:1.55;}
+  .vazio-icone{font-size:40px;margin-bottom:10px;opacity:.8;}
+  .secao-titulo{font-size:13px;font-weight:700;color:var(--text2);margin:22px 2px 10px;}
+  .secao-titulo:first-child{margin-top:8px;}
+
+  .fab{position:fixed;right:16px;bottom:calc(18px + var(--safe-bot));z-index:30;display:flex;align-items:center;gap:8px;
+    background:var(--orange);color:#fff;border:none;border-radius:18px;height:56px;padding:0 22px 0 18px;font-weight:700;
+    font-size:15px;box-shadow:0 10px 26px rgba(241,90,36,.42);cursor:pointer;}
+  .fab:active{transform:scale(.96);background:var(--orange-dark);}
+
+  /* ===== Passos ===== */
+  .passos{display:flex;align-items:flex-start;padding:12px 6px;background:var(--navy2);border-bottom:1px solid var(--border);}
+  .passo{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;font-size:11px;color:var(--text3);text-align:center;font-weight:600;
+    padding:2px 0;border-radius:10px;background:none;border:none;font-family:inherit;}
+  .passo.clicavel{cursor:pointer;}
+  .passo.clicavel:active{background:rgba(127,127,127,.08);}
+  .passo::before{content:'';position:absolute;top:16px;left:-50%;width:100%;height:2px;background:var(--border2);z-index:0;}
+  .passo:first-child::before{display:none;}
+  .passo .bola{width:28px;height:28px;border-radius:50%;border:2px solid var(--border2);background:var(--navy2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;z-index:1;}
+  .passo.feito{color:var(--ok-txt);}
+  .passo.feito .bola{background:var(--green);border-color:var(--green);color:#06281a;}
+  .passo.feito::before,.passo.atual::before{background:var(--green);}
+  .passo.atual{color:var(--text);}
+  .passo.atual .bola{border-color:var(--orange);color:var(--lar-txt);background:rgba(241,90,36,0.2);box-shadow:0 0 0 4px rgba(241,90,36,.12);}
+  .passo-titulo{font-size:18px;font-weight:800;margin-bottom:4px;letter-spacing:-.2px;}
+  .passo-desc{font-size:13px;color:var(--text2);margin:0 0 14px;line-height:1.45;}
+
+  .resumo-equip{display:flex;align-items:center;gap:12px;background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);padding:12px 14px;margin-bottom:16px;}
+  .resumo-equip .card-titulo{font-size:14.5px;}
+
+  /* ===== Régua do dia (grade de horas) ===== */
+  .regua{display:grid;grid-template-columns:46px repeat(6,1fr);gap:6px;touch-action:none;user-select:none;-webkit-user-select:none;margin-bottom:6px;}
+  .regua-rot{hyphens:manual;min-width:0;font-size:11px;color:var(--text3);font-weight:700;display:flex;align-items:center;line-height:1.2;}
+  .hora{position:relative;height:56px;border-radius:11px;border:1px solid var(--border);background:var(--vazio-hora);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);overflow:hidden;}
+  .hora .h{font-size:12px;font-weight:800;}
+  .hora .ev{font-size:10px;font-weight:700;margin-top:2px;max-width:100%;padding:0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hora.pintada{background:color-mix(in srgb,var(--c) 26%,transparent);border-color:var(--c);color:var(--text);}
+  .hora.pintada .h{color:var(--text2);}
+  .hora.pintada .ev{color:var(--text);}
+  .hora.sem-ativ::after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--amber);}
+  .regua.travada{pointer-events:none;opacity:.85;}
+  .atalhos{display:flex;gap:8px;overflow-x:auto;margin:0 -16px 14px;padding:0 16px;scrollbar-width:none;}
+  .atalhos::-webkit-scrollbar{display:none;}
+  .atalho{flex-shrink:0;background:var(--navy2);border:1px solid var(--border2);color:var(--text);border-radius:10px;min-height:40px;padding:0 12px;
+    font-size:13px;font-weight:700;cursor:pointer;}
+  .atalho:active{background:var(--navy3);}
+  .atalho.perigo{color:var(--err-txt);}
+  .contagem{display:flex;gap:14px;font-size:12.5px;color:var(--text2);margin:2px 2px 12px;flex-wrap:wrap;}
+  .contagem b{color:var(--text);font-size:14px;}
+
+  .trechos{background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);overflow:hidden;}
+  .trecho{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);font-size:13.5px;}
+  .trecho:last-child{border-bottom:none;}
+  .trecho-faixa{width:4px;align-self:stretch;border-radius:3px;background:var(--c);flex-shrink:0;}
+  .trecho-hora{font-weight:800;min-width:86px;font-variant-numeric:tabular-nums;}
+  .trecho-txt{flex:1;min-width:0;}
+  .trecho-txt small{display:block;color:var(--text2);font-size:12px;margin-top:1px;}
+  .trecho-dur{color:var(--text2);font-size:12.5px;font-weight:700;}
+
+  /* Pincel fixo no rodapé da régua */
+  .pincel{position:sticky;bottom:0;z-index:12;margin:16px -16px 0;padding:10px 16px calc(12px + var(--safe-bot));
+    background:var(--navy2);border-top:1px solid var(--border2);box-shadow:0 -8px 20px rgba(0,0,0,.18);}
+  .pincel-rot{font-size:12px;color:var(--text2);font-weight:600;margin-bottom:8px;}
+  .eventos{display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px 2px;scrollbar-width:none;}
+  .eventos::-webkit-scrollbar{display:none;}
+  .ev-chip{flex-shrink:0;display:flex;align-items:center;gap:7px;height:42px;padding:0 14px 0 11px;border-radius:12px;
+    border:1px solid var(--border2);background:var(--navy3);color:var(--text2);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .ev-chip .bolinha{width:12px;height:12px;border-radius:4px;background:var(--c);}
+  .ev-chip.sel{border-color:var(--c);background:color-mix(in srgb,var(--c) 22%,transparent);color:var(--text);box-shadow:0 0 0 1px var(--c) inset;}
+  .ev-chip.borracha .bolinha{background:none;border:2px dashed var(--text3);}
+  .ev-chip.borracha.sel{--c:var(--text3);}
+  .pincel-detalhe{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .pincel-detalhe button{background:var(--navy3);border:1px solid var(--border2);border-radius:12px;min-height:46px;padding:6px 12px;text-align:left;
+    color:var(--text);cursor:pointer;min-width:0;}
+  .pincel-detalhe button small{display:block;font-size:11px;color:var(--text2);font-weight:600;}
+  .pincel-detalhe button span{display:block;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .pincel-detalhe button.falta span{color:var(--warn-txt);}
+  .pincel .btn{margin-top:10px;}
+
+  /* ===== Seções recolhíveis ===== */
+  .secao-opcional{border:1px solid var(--border);border-radius:var(--raio);margin-bottom:12px;overflow:hidden;background:var(--navy2);}
+  .secao-opcional-cab{min-height:56px;padding:12px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;font-size:14.5px;
+    width:100%;background:none;border:none;color:var(--text);text-align:left;}
+  .secao-opcional-cab:active{background:var(--navy3);}
+  .secao-opcional-cab .ic-seta{margin-left:auto;color:var(--text3);transition:transform .2s;}
+  .secao-opcional.aberta .ic-seta{transform:rotate(180deg);}
+  .secao-opcional-corpo{display:none;padding:4px 16px 16px;border-top:1px solid var(--border);}
+  .secao-opcional.aberta .secao-opcional-corpo{display:block;}
+  .secao-opcional-corpo .campo input,.secao-opcional-corpo .campo select{background:var(--navy3);}
+  .item-lista{margin:12px 0 4px;}
+  .item{display:flex;align-items:center;gap:10px;background:var(--navy3);border:1px solid var(--border);border-radius:12px;padding:10px 6px 10px 12px;margin-bottom:8px;font-size:13.5px;}
+  .item-txt{flex:1;min-width:0;}
+  .item-txt small{display:block;color:var(--text2);font-size:12px;margin-top:2px;}
+  .btn-remover{background:none;border:none;color:var(--err-txt);cursor:pointer;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;}
+  .btn-remover:active{background:rgba(224,85,85,.12);}
+  .btn-add-linha{width:100%;background:none;border:1px dashed var(--border2);color:var(--blue2);border-radius:12px;
+    min-height:46px;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px;}
+  .toggle{display:flex;gap:4px;margin-bottom:14px;background:var(--navy3);border:1px solid var(--border2);padding:4px;border-radius:14px;}
+  .toggle button{flex:1;min-height:42px;border-radius:10px;border:none;background:none;color:var(--text2);font-weight:700;font-size:14px;cursor:pointer;}
+  .toggle button.sel{background:var(--orange);color:#fff;}
+  .contador{background:rgba(127,127,127,.16);color:var(--text2);border-radius:999px;padding:1px 8px;font-size:12px;}
+
+  /* ===== Revisão ===== */
+  .numeros{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+  .numero{background:var(--navy2);border:1px solid var(--border);border-radius:14px;padding:12px 14px;}
+  .numero b{display:block;font-size:22px;font-weight:800;letter-spacing:-.4px;font-variant-numeric:tabular-nums;}
+  .numero span{font-size:12px;color:var(--text2);}
+  .numero.destaque{border-color:rgba(46,204,138,.45);}
+  .numero.destaque b{color:var(--ok-txt);}
+  .avisos{margin-bottom:14px;}
+  .aviso{display:flex;gap:10px;align-items:flex-start;background:rgba(224,168,48,.12);border:1px solid rgba(224,168,48,.4);color:var(--text);
+    border-radius:12px;padding:11px 12px;font-size:13.5px;margin-bottom:8px;line-height:1.4;}
+  .aviso.ok{background:rgba(46,204,138,.10);border-color:rgba(46,204,138,.4);}
+  .aviso button{margin-left:auto;background:none;border:none;color:var(--blue2);font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;padding:0 2px;}
+  .banner-trava{background:rgba(138,165,190,.14);border:1px solid var(--border2);border-radius:14px;padding:14px;font-size:13.5px;line-height:1.5;margin-bottom:14px;}
+  .banner-trava b{display:block;margin-bottom:2px;}
+  .banner-duplicado{background:rgba(224,85,85,.10);border:1px solid rgba(224,85,85,.45);border-radius:14px;padding:14px;font-size:13.5px;line-height:1.5;margin-bottom:14px;}
+  .banner-duplicado button{margin-top:10px;}
+  .lista-def{background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);padding:4px 14px;margin-bottom:14px;}
+  .lista-def div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13.5px;}
+  .lista-def div:last-child{border-bottom:none;}
+  .lista-def dt{color:var(--text2);}
+  .lista-def dd{font-weight:700;text-align:right;}
+
+  /* ===== Toast ===== */
+  .toast{position:fixed;left:50%;top:calc(var(--topo-h) + var(--safe-top) + 10px);transform:translateX(-50%) translateY(-12px);background:var(--navy4);
+    border:1px solid var(--border2);color:var(--text);padding:12px 18px;border-radius:12px;font-size:14px;box-shadow:var(--sombra);
+    z-index:120;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;width:max-content;max-width:90vw;text-align:center;}
+  .toast.mostrar{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.erro{border-color:var(--red);}
+  .toast.sucesso{border-color:var(--green);}
+
+  /* ===== Bottom sheet ===== */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:none;align-items:flex-end;}
+  .modal-overlay.aberto{display:flex;animation:fade .18s ease-out;}
+  .modal-overlay.aberto .modal{animation:subir .22s cubic-bezier(.2,.8,.3,1);}
+  @keyframes fade{from{opacity:0;}to{opacity:1;}}
+  @keyframes subir{from{transform:translateY(40px);opacity:.6;}to{transform:none;opacity:1;}}
+  .modal{background:var(--navy2);width:100%;border-radius:22px 22px 0 0;padding:10px 16px calc(18px + var(--safe-bot));
+    max-height:82vh;overflow-y:auto;border-top:1px solid var(--border2);}
+  .modal::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:var(--border2);margin:0 auto 14px;}
+  .modal-titulo{font-weight:800;font-size:17px;margin-bottom:14px;}
+  .opcao-lista button{width:100%;text-align:left;background:var(--navy3);border:1px solid var(--border);display:flex;align-items:center;gap:12px;
+    color:var(--text);min-height:54px;padding:12px 14px;border-radius:14px;margin-bottom:8px;font-size:15px;font-weight:600;cursor:pointer;}
+  .opcao-lista button:active{background:var(--navy4);}
+  .opcao-lista button.sel{border-color:var(--orange);}
+  .opcao-lista button small{display:block;font-size:12px;color:var(--text2);font-weight:500;margin-top:2px;}
+  .opcao-lista .opcao-ic{font-size:22px;width:28px;text-align:center;}
+  .opcao-lista .opcao-perigo{color:var(--err-txt);border-color:rgba(224,85,85,.35);}
+  .modal .campo select,.modal .campo input{background:var(--navy3);}
+
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(127,127,127,.35);border-top-color:currentColor;border-radius:50%;animation:girar .7s linear infinite;}
+  @keyframes girar{to{transform:rotate(360deg);}}
+
+  @media (min-width:640px){ .conteudo,.home-ferramentas{max-width:640px;margin-left:auto;margin-right:auto;}
+    .pincel,.barra-acao{margin-left:0;margin-right:0;border-radius:18px 18px 0 0;} }
+  @media (max-width:360px){ .regua{grid-template-columns:40px repeat(6,1fr);gap:4px;} .hora .ev{font-size:9px;} }
+
+
+  /* ===== Abertura e identificação ===== */
+  .tela-centro .conteudo{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100%;
+    padding:24px 24px calc(24px + var(--safe-bot));background:radial-gradient(120% 60% at 50% 0%,rgba(46,123,196,.22),transparent 70%);}
+  .tela-centro{min-height:calc(100vh - var(--safe-top));min-height:calc(100dvh - var(--safe-top));}
+  .logo-app{width:84px;height:84px;border-radius:24px;margin-bottom:20px;box-shadow:var(--sombra);}
+  .logo-titulo{font-size:23px;font-weight:800;margin-bottom:6px;text-align:center;letter-spacing:-.3px;}
+  .logo-sub{font-size:13.5px;color:var(--text2);margin-bottom:28px;text-align:center;max-width:300px;line-height:1.45;}
+  .tela-centro .campo,.tela-centro .btn{max-width:380px;}
+  .tela-centro .ajuda{max-width:380px;width:100%;}
+
+  /* ===== Avisos do app (instalar / nova versão) ===== */
+  .aviso-app{display:flex;align-items:center;gap:12px;background:var(--navy2);border:1px solid var(--border2);border-radius:var(--raio);
+    padding:12px 8px 12px 14px;margin-bottom:12px;font-size:13.5px;line-height:1.4;}
+  .aviso-app .ic-grande{font-size:26px;}
+  .aviso-app .txt{flex:1;min-width:0;}
+  .aviso-app .txt small{display:block;color:var(--text2);font-size:12.5px;margin-top:2px;}
+  .aviso-app .acao{background:var(--orange);color:#fff;border:none;border-radius:10px;min-height:40px;padding:0 14px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;}
+  .aviso-app .fechar{background:none;border:none;color:var(--text3);width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:18px;}
+
+  /* ===== Assinatura ===== */
+  .assin-bloco{background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);padding:14px;margin-bottom:12px;}
+  .assin-titulo{font-weight:800;font-size:15px;margin-bottom:2px;}
+  .assin-sub{font-size:12.5px;color:var(--text2);margin-bottom:12px;}
+  .assin-bloco .campo input,.assin-bloco .campo textarea{background:var(--navy3);}
+  .pad-wrap{position:relative;background:#fff;border-radius:12px;border:1px solid var(--border2);overflow:hidden;}
+  .pad-wrap canvas{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair;}
+  .pad-linha{position:absolute;left:18px;right:18px;bottom:40px;border-bottom:1.5px solid #c9d3de;pointer-events:none;}
+  .pad-dica{position:absolute;left:0;right:0;bottom:14px;text-align:center;font-size:12px;color:#8a99aa;pointer-events:none;}
+  .pad-wrap.com-traco .pad-dica{display:none;}
+  .pad-limpar{position:absolute;top:8px;right:8px;background:#eef2f7;border:none;color:#46607A;border-radius:8px;min-height:34px;padding:0 12px;font-size:12.5px;font-weight:700;cursor:pointer;}
+  .declaracao{font-size:13px;color:var(--text2);margin:10px 2px 0;line-height:1.45;}
+  .link-acao{background:none;border:none;color:var(--blue2);font-size:13.5px;font-weight:700;cursor:pointer;padding:10px 2px 0;text-align:left;}
+  .recusa-box{display:none;}
+  .assin-bloco.recusou .recusa-box{display:block;}
+  .assin-bloco.recusou .assina-box{display:none;}
+  .conferir{background:var(--navy2);border:1px solid var(--border2);border-radius:var(--raio);padding:14px;margin-bottom:12px;font-size:14px;line-height:1.55;}
+  .conferir b{font-weight:800;}
+  .conferir ul{list-style:none;margin-top:6px;}
+  .conferir li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);}
+  .conferir li:last-child{border-bottom:none;}
+  .conferir li span:last-child{font-weight:700;text-align:right;}
+  .nota-trilha{font-size:12px;color:var(--text3);line-height:1.5;margin:4px 2px 0;}
+
+  .comprovante{background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);padding:14px;margin-bottom:12px;}
+  .comprovante-cab{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .comprovante-cab b{font-size:15px;}
+  .assin-img{background:#fff;border-radius:10px;padding:6px 10px;margin-top:6px;}
+  .assin-img img{width:100%;max-height:96px;object-fit:contain;display:block;}
+  .assinante{padding:10px 0;border-bottom:1px solid var(--border);}
+  .assinante:last-of-type{border-bottom:none;}
+  .assinante-nome{font-weight:700;font-size:14px;}
+  .assinante-nome small{font-weight:500;color:var(--text2);font-size:12.5px;}
+  .trilha{font-size:12.5px;color:var(--text2);line-height:1.65;margin-top:8px;padding-top:10px;border-top:1px solid var(--border);}
+  .trilha a{color:var(--blue2);}
+  .codigo{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.4px;color:var(--text);}
+  .integridade{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;margin-top:6px;}
+  .integridade.ok{color:var(--ok-txt);} .integridade.erro{color:var(--err-txt);}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-voltar" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-baixo" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+  <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-lua" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-envio" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></symbol>
+</svg>
+
+<!-- ================= CARREGANDO ================= -->
+<div class="tela tela-centro ativa" id="tela-carregando">
+  <div class="conteudo">
+    <img class="logo-app" src="icone.svg" alt=""/>
+    <div class="logo-titulo">Produtividade em Campo</div>
+    <div class="logo-sub" id="carregando-msg"><span class="spinner"></span></div>
+  </div>
+</div>
+
+<!-- ================= IDENTIFICAÇÃO (primeiro uso) ================= -->
+<div class="tela tela-centro" id="tela-id">
+  <div class="conteudo">
+    <img class="logo-app" src="icone.svg" alt=""/>
+    <div class="logo-titulo">Produtividade em Campo</div>
+    <div class="logo-sub">Antes de começar, diga quem vai lançar neste celular. Seu nome aparece nas assinaturas.</div>
+    <div class="campo"><span class="rotulo">Seu nome *</span><input type="text" id="id-nome" autocomplete="name" enterkeyhint="next"/></div>
+    <div class="campo"><span class="rotulo">Matrícula</span><input type="text" id="id-matricula" inputmode="numeric" enterkeyhint="next"/></div>
+    <div class="campo"><span class="rotulo">Obra *</span><select id="id-obra"></select></div>
+    <div class="erro-msg" id="id-erro"></div>
+    <button class="btn" onclick="salvarIdentificacao()">Começar</button>
+  </div>
+</div>
+
+<!-- ================= HOME ================= -->
+<div class="tela" id="tela-home">
+  <div class="topo">
+    <button class="topo-textos" onclick="abrirTrocaObra()" aria-label="Trocar obra">
+      <div class="topo-titulo">Produtividade</div>
+      <div class="topo-sub" id="home-sub"></div>
+    </button>
+    <button class="topo-icone" onclick="alternarTema()" aria-label="Alternar tema claro/escuro"><svg class="ic ic-lua"><use href="#i-sol"/></svg><svg class="ic ic-sol"><use href="#i-lua"/></svg></button>
+    <button class="topo-icone" onclick="abrirMenu()" aria-label="Mais opções"><svg class="ic"><use href="#i-menu"/></svg></button>
+  </div>
+  <div class="status-barra" id="status-barra"></div>
+  <div class="home-ferramentas">
+    <label class="busca"><svg class="ic" style="width:19px;height:19px"><use href="#i-busca"/></svg>
+      <input type="search" id="busca-rdo" placeholder="Buscar máquina, prefixo ou operador" enterkeyhint="search" oninput="renderHome()"/></label>
+    <div class="filtros" id="filtros-home"></div>
+  </div>
+  <div class="conteudo" id="lista-home" style="padding-top:4px"></div>
+  <button class="fab" onclick="novoLancamento()"><svg class="ic"><use href="#i-mais"/></svg>Novo lançamento</button>
+</div>
+
+<!-- ================= LANÇAMENTO ================= -->
+<div class="tela" id="tela-rdo">
+  <div class="topo">
+    <button class="topo-voltar" aria-label="Voltar" onclick="voltarPasso()"><svg class="ic"><use href="#i-voltar"/></svg></button>
+    <div class="topo-textos">
+      <div class="topo-titulo" id="rdo-titulo">Novo lançamento</div>
+      <div class="topo-sub" id="rdo-sub"></div>
+    </div>
+    <button class="topo-icone" aria-label="Mais opções" onclick="abrirMenuRdo()"><svg class="ic"><use href="#i-menu"/></svg></button>
+  </div>
+  <div class="passos" id="passos-rdo"></div>
+  <div class="conteudo conteudo-form" id="rdo-corpo"></div>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="if(event.target===this)fecharModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+    <div class="modal-titulo" id="modal-titulo"></div>
+    <div id="modal-corpo"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO
+   ENDPOINT: quando houver backend, coloque aqui a URL que recebe cada
+   lançamento (POST com o JSON do lançamento). Vazio = sem servidor:
+   os lançamentos ficam no celular e saem pelo botão "Exportar".
+   ===================================================================== */
+const CONFIG = {
+  VERSAO_APP: '1.0.0',
+  ENDPOINT: '',
+  HEADERS: {},
+};
+// Usado só na prévia: se preenchido, dispensa o catalogo.json
+const CATALOGO_EMBUTIDO = null;
+
+/* =====================================================================
+   BANCO LOCAL (IndexedDB)
+   Lojas: 'rdos' (lançamentos) e 'meta' (catálogo em cache).
+   ===================================================================== */
+const BD = {
+  _db: null,
+  abrir(){
+    return new Promise((ok, falha)=>{
+      if (!('indexedDB' in window)) return falha(new Error('sem_indexeddb'));
+      const req = indexedDB.open('frota_campo', 1);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if (!db.objectStoreNames.contains('rdos')) db.createObjectStore('rdos', { keyPath:'id' });
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta');
+      };
+      req.onsuccess = ()=>{ this._db = req.result; ok(); };
+      req.onerror = ()=>falha(req.error);
+    });
+  },
+  _tx(loja, modo, fn){
+    return new Promise((ok, falha)=>{
+      const tx = this._db.transaction(loja, modo);
+      const res = fn(tx.objectStore(loja));
+      tx.oncomplete = ()=>ok(res && res.result);
+      tx.onerror = ()=>falha(tx.error);
+      tx.onabort = ()=>falha(tx.error);
+    });
+  },
+  todos(loja){ return this._tx(loja, 'readonly', s=>s.getAll()); },
+  pegar(loja, chave){ return this._tx(loja, 'readonly', s=>s.get(chave)); },
+  gravar(loja, valor, chave){ return this._tx(loja, 'readwrite', s=>chave!==undefined ? s.put(valor, chave) : s.put(valor)); },
+  apagar(loja, chave){ return this._tx(loja, 'readwrite', s=>s.delete(chave)); },
+};
+
+/* =====================================================================
+   REPO — única porta de acesso aos dados. Mantém tudo em memória pra
+   leitura rápida e grava cada alteração no IndexedDB.
+   Pra ligar no backend, mexa só em carregarCatalogo() e enviarRdo().
+   ===================================================================== */
+const Repo = {
+  cat: null, _rdos: [],
+  async iniciar(){
+    await BD.abrir();
+    this._rdos = await BD.todos('rdos') || [];
+    await this.carregarCatalogo();
+    try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+  },
+  async carregarCatalogo(){
+    if (CATALOGO_EMBUTIDO) { this.cat = CATALOGO_EMBUTIDO; return; }
+    try {
+      const r = await fetch('catalogo.json', { cache:'no-cache' });
+      if (!r.ok) throw new Error('http '+r.status);
+      this.cat = await r.json();
+      await BD.gravar('meta', this.cat, 'catalogo');
+    } catch (e) {
+      this.cat = await BD.pegar('meta', 'catalogo');
+      if (!this.cat) throw new Error('sem_catalogo');
+    }
+  },
+
+  obras(){ return this.cat.obras; },
+  obra(id){ return this.cat.obras.find(o=>o.id===id); },
+  fornecedor(id){ return this.cat.fornecedores.find(f=>f.id===id) || { razao_social:'—' }; },
+  equipamentos(obraId){ return this.cat.equipamentos.filter(e=>e.obra_id===obraId && e.ativo!==false); },
+  equipamento(id){ return this.cat.equipamentos.find(e=>e.id===id); },
+  eventos(){ return this.cat.eventos; },
+  evento(nome){ return this.cat.eventos.find(e=>e.nome===nome); },
+  atividades(obraId){ return this.cat.atividades.filter(a=>a.obra_id===obraId).map(a=>a.nome); },
+  locais(obraId){ return this.cat.locais.filter(a=>a.obra_id===obraId).map(a=>a.nome); },
+  combustiveis(){ return this.cat.combustiveis || ['Diesel S10','Diesel S500','Gasolina','Outro']; },
+
+  rdos(){ return this._rdos; },
+  rdo(id){ return this._rdos.find(r=>r.id===id); },
+  doDia(equipId, data, excetoId){ return this._rdos.find(r=>r.equipamento_id===equipId && r.data===data && r.id!==excetoId); },
+  ultimoMedidor(equipId, antesDe){
+    const ant = this._rdos.filter(r=>r.equipamento_id===equipId && r.data<antesDe && r.horimetro_final!=null)
+      .sort((a,b)=>b.data.localeCompare(a.data));
+    return ant[0] ? { valor: ant[0].horimetro_final, data: ant[0].data } : null;
+  },
+  async salvar(rdo){
+    rdo.editado_em = new Date().toISOString();
+    const copia = JSON.parse(JSON.stringify(rdo));
+    const i = this._rdos.findIndex(r=>r.id===rdo.id);
+    if (i>=0) this._rdos[i] = copia; else this._rdos.push(copia);
+    try { await BD.gravar('rdos', copia); }
+    catch (e) { toast('Não foi possível gravar no aparelho. Verifique o espaço livre.', 'erro'); throw e; }
+  },
+  async excluir(id){ this._rdos = this._rdos.filter(r=>r.id!==id); await BD.apagar('rdos', id); },
+  aEnviar(){ return this._rdos.filter(r=>r._sync==='pendente'); },
+  naoExportados(){ return this._rdos.filter(r=>r._sync==='pendente' && !r.exportado_em); },
+
+  // Envia um lançamento ao servidor. Hoje: POST genérico em CONFIG.ENDPOINT.
+  // Com Supabase: upsert em frota_rdo + manutenções/abastecimentos/ajustes.
+  async enviarRdo(rdo){
+    const r = await fetch(CONFIG.ENDPOINT, { method:'POST',
+      headers: Object.assign({ 'Content-Type':'application/json' }, CONFIG.HEADERS),
+      body: JSON.stringify(rdo) });
+    if (!r.ok) throw new Error('http '+r.status);
+  },
+  async enviarPendentes(){
+    let n = 0;
+    for (const r of this.aEnviar()) {
+      await this.enviarRdo(r);
+      r._sync = 'enviado'; r.enviado_em = new Date().toISOString();
+      await this.salvar(r); n++;
+    }
+    return n;
+  },
+};
+
+const Prefs = {
+  _p: null,
+  get(){
+    if (!this._p) { try { this._p = JSON.parse(localStorage.getItem('fc_pref')) || {}; } catch (e) { this._p = {}; } }
+    return this._p;
+  },
+  set(k,v){ this.get()[k]=v; try { localStorage.setItem('fc_pref', JSON.stringify(this._p)); } catch (e) {} },
+};
+function idAparelho(){
+  let id = Prefs.get().aparelho;
+  if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : 'ap-'+Date.now().toString(36)+Math.random().toString(36).slice(2,10)); Prefs.set('aparelho', id); }
+  return id;
+}
+function descricaoAparelho(){
+  const ua = navigator.userAgent;
+  const m = ua.match(/Android [\d.]+; ([^;)]+)/) || ua.match(/(iPhone|iPad)/);
+  const so = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : 'Navegador';
+  return so + (m && m[1] && m[1]!=='K' ? ' ('+m[1].trim()+')' : '');
+}
+
+/* ===================================================================== */
+const HORAS = Array.from({length:24},(_,h)=>(h<10?'0'+h:''+h)+'h');
+const FAIXAS = [ {nome:'Madru&shy;gada', de:0}, {nome:'Manhã', de:6}, {nome:'Tarde', de:12}, {nome:'Noite', de:18} ];
+const PASSOS = ['Máquina','Dia','Horas','Extras','Revisão','Assinar'];
+
+function hojeISO(desloc){ const d=new Date(); d.setDate(d.getDate()+(desloc||0)); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtData(iso, longo){
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-').map(Number); const dt = new Date(y,m-1,d);
+  if (iso===hojeISO()) return 'Hoje';
+  if (iso===hojeISO(-1)) return 'Ontem';
+  return dt.toLocaleDateString('pt-BR', longo ? {weekday:'long', day:'numeric', month:'long'} : {weekday:'short', day:'numeric', month:'short'});
+}
+function fmtDataCompleta(iso){ const [y,m,d] = iso.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }
+function fmtHoraCompleta(isoDt){ return new Date(isoDt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+function fmtNum(v, dec){ if (v==null || isNaN(v)) return '—'; return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:dec||0, maximumFractionDigits:dec==null?1:dec}); }
+function fmtR$(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function uid(){ return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function nomeEquip(e){ return e ? e.descricao : 'Máquina removida do catálogo'; }
+function idEquip(e){ return e ? (e.prefixo || e.placa || '') : ''; }
+function ehKm(e){ return e && e.tipo_franquia==='km'; }
+function rotuloMedidor(e){ return ehKm(e) ? 'Odômetro' : 'Horímetro'; }
+function unidMedidor(e){ return ehKm(e) ? 'km' : 'h'; }
+function parseNum(v){ if (v==null || v==='') return null; const n = parseFloat(String(v).replace(/\./g, String(v).includes(',') ? '' : '.').replace(',','.')); return isNaN(n) ? null : n; }
+function numParaCampo(v){ return v!=null ? String(v).replace('.',',') : ''; }
+function online(){ return navigator.onLine !== false; }
+
+function novoRdoVazio(){
+  const ap = Prefs.get().apontador || {};
+  return { id:uid(), versao_app:CONFIG.VERSAO_APP, obra_id:Prefs.get().obra, equipamento_id:null, data:hojeISO(), operador:'', matricula:'',
+    horimetro_inicial:null, horimetro_final:null, ocorrencia_geral:'', grade:{},
+    manutencoes:[], abastecimentos:[], ajustes:[],
+    status_medicao:'nao_medido', _sync:'rascunho', assinaturas:null, assinaturas_anuladas:[],
+    criado_em:new Date().toISOString(), criado_por:ap.nome||'', aparelho_id:idAparelho() };
+}
+
+/* ===================================================================== */
+let filtroHome = 'todos';
+let rdo = null, passoAtual = 0, passoMax = 0;
+let pincel = { evento:'Em Atividade', atividade:'', local:'' };
+let secoesAbertas = {};
+let enviando = false;
+let promptInstalar = null, swEsperando = null;
+let pads = {};
+
+/* ===================================================================== */
+/* NAVEGAÇÃO E BOTÃO VOLTAR DO ANDROID                                   */
+function telaAtiva(){ return document.querySelector('.tela.ativa')?.id; }
+function mostrarTela(id){ document.querySelectorAll('.tela').forEach(t=>t.classList.toggle('ativa', t.id===id)); window.scrollTo(0,0); if (id==='tela-rdo') guardaHistorico(); }
+function guardaHistorico(){ if (!history.state || !history.state.fc) history.pushState({fc:1}, ''); }
+window.addEventListener('popstate', ()=>{
+  if (document.getElementById('modal').classList.contains('aberto')) fecharModal();
+  else if (telaAtiva()==='tela-rdo') voltarPasso();
+  if (document.getElementById('modal').classList.contains('aberto') || telaAtiva()==='tela-rdo') history.pushState({fc:1}, '');
+});
+
+let _toastT;
+function toast(msg, tipo){
+  const t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast mostrar '+(tipo||'');
+  clearTimeout(_toastT); _toastT = setTimeout(()=>t.className='toast', 2800);
+}
+function abrirModal(titulo, html){
+  document.getElementById('modal-titulo').textContent = titulo;
+  document.getElementById('modal-corpo').innerHTML = html;
+  document.getElementById('modal').classList.add('aberto');
+  guardaHistorico();
+}
+function fecharModal(){ document.getElementById('modal').classList.remove('aberto'); }
+document.addEventListener('keydown', e=>{ if (e.key==='Escape') fecharModal(); });
+
+let _opcoesCb = null, _opcoesAtuais = [];
+function escolherOpcao(titulo, opcoes, cb){
+  _opcoesCb = cb; _opcoesAtuais = opcoes;
+  abrirModal(titulo, `<div class="opcao-lista">${opcoes.map((o,i)=>`<button class="${o.sel?'sel':''} ${o.perigo?'opcao-perigo':''}" onclick="_escolheu(${i})">
+    ${o.ic?`<span class="opcao-ic">${o.ic}</span>`:''}<div>${esc(o.rotulo)}${o.sub?`<small>${esc(o.sub)}</small>`:''}</div></button>`).join('')}</div>`);
+}
+function _escolheu(i){ const o = _opcoesAtuais[i]; fecharModal(); if (_opcoesCb) _opcoesCb(o.valor); }
+
+function alternarTema(){
+  const novo = document.documentElement.getAttribute('data-tema')==='claro' ? 'escuro' : 'claro';
+  document.documentElement.setAttribute('data-tema', novo);
+  try { localStorage.setItem('fc_tema', novo); } catch (e) {}
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', novo==='claro' ? '#FFFFFF' : '#0B1929');
+  toast(novo==='claro' ? 'Tema claro' : 'Tema escuro');
+}
+
+/* ===================================================================== */
+/* CÁLCULOS DO DIA                                                       */
+function corEvento(nome){ const e = Repo.evento(nome); return e ? e.cor : '#64829E'; }
+function resumoGrade(grade){
+  const r = { apontadas:0, ativ:0, porEvento:{}, semAtividade:0, buracos:0 };
+  let prim=-1, ult=-1;
+  HORAS.forEach((k,h)=>{
+    const g = grade[k]; if (!g || !g.evento) return;
+    r.apontadas++; r.porEvento[g.evento] = (r.porEvento[g.evento]||0)+1;
+    if (g.evento==='Em Atividade'){ r.ativ++; if (!g.atividade || !g.local) r.semAtividade++; }
+    if (prim<0) prim=h; ult=h;
+  });
+  if (prim>=0) for (let h=prim; h<=ult; h++) if (!grade[HORAS[h]]?.evento) r.buracos++;
+  r.prim = prim; r.ult = ult;
+  return r;
+}
+function trechos(grade){
+  const out = []; let atual = null;
+  HORAS.forEach((k,h)=>{
+    const g = grade[k];
+    const chave = g && g.evento ? [g.evento,g.atividade||'',g.local||''].join('|') : null;
+    if (atual && chave===atual.chave){ atual.ate = h; return; }
+    if (atual) out.push(atual);
+    atual = chave ? { chave, de:h, ate:h, g } : null;
+  });
+  if (atual) out.push(atual);
+  return out;
+}
+function fmtFaixa(de, ate){ const a = ate+1; return HORAS[de].replace('h','')+'h–'+(a===24?'24':String(a).padStart(2,'0'))+'h'; }
+function reguaMini(grade){
+  return `<div class="regua-mini" aria-hidden="true">${HORAS.map(k=>{
+    const g = grade[k]; return g && g.evento ? `<i style="background:${corEvento(g.evento)}"></i>` : '<i></i>';
+  }).join('')}</div><div class="regua-mini-eixo"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>`;
+}
+function travado(r){ return r && r.status_medicao && r.status_medicao!=='nao_medido'; }
+function assinado(r){ return r && !!r.assinaturas; }
+function bloqueado(r){ return travado(r) || assinado(r); }
+
+function seloRdo(r){
+  if (travado(r)) return '<span class="selo selo-neutro">🔒 Medido</span>';
+  if (r._sync==='rascunho') return '<span class="selo selo-rascunho">Rascunho</span>';
+  let s = '';
+  if (r._sync==='enviado') s = '<span class="selo selo-enviado">Enviado</span>';
+  else if (CONFIG.ENDPOINT) s = '<span class="selo selo-info">Aguardando envio</span>';
+  else s = r.exportado_em ? '<span class="selo selo-enviado">Assinado e exportado</span>' : '<span class="selo selo-info">Assinado, falta exportar</span>';
+  if (r.assinaturas && r.assinaturas.recusa_operador) s += '<span class="selo selo-erro">Operador não assinou</span>';
+  return s;
+}
+
+/* ===================================================================== */
+/* ABERTURA                                                              */
+async function iniciar(){
+  try { await Repo.iniciar(); }
+  catch (e) {
+    document.getElementById('carregando-msg').innerHTML = e.message==='sem_catalogo'
+      ? 'Abra o app com internet pelo menos uma vez, pra baixar a lista de obras e máquinas.<br/><br/><button class="btn" onclick="location.reload()">Tentar de novo</button>'
+      : 'Este navegador não permite guardar dados no aparelho. Use o Chrome (Android) ou o Safari (iPhone).';
+    return;
+  }
+  const p = Prefs.get();
+  if (!p.obra || !Repo.obra(p.obra)) Prefs.set('obra', Repo.obras()[0]?.id);
+  if (!p.apontador || !p.apontador.nome) return abrirIdentificacao();
+  mostrarTela('tela-home'); renderHome();
+  tentarEnviar(true);
+}
+function abrirIdentificacao(){
+  const ap = Prefs.get().apontador || {};
+  document.getElementById('id-nome').value = ap.nome || '';
+  document.getElementById('id-matricula').value = ap.matricula || '';
+  document.getElementById('id-obra').innerHTML = Repo.obras().map(o=>`<option value="${o.id}" ${o.id===Prefs.get().obra?'selected':''}>${esc(o.nome)}</option>`).join('');
+  mostrarTela('tela-id');
+}
+function salvarIdentificacao(){
+  const nome = document.getElementById('id-nome').value.trim();
+  if (nome.length<3){ document.getElementById('id-erro').textContent = 'Informe seu nome completo.'; return; }
+  Prefs.set('apontador', { nome, matricula: document.getElementById('id-matricula').value.trim() });
+  Prefs.set('obra', document.getElementById('id-obra').value);
+  mostrarTela('tela-home'); renderHome();
+}
+
+/* ===================================================================== */
+/* ENVIO / EXPORTAÇÃO                                                    */
+function renderStatus(){
+  const el = document.getElementById('status-barra');
+  const off = !online();
+  if (CONFIG.ENDPOINT){
+    const n = Repo.aEnviar().length;
+    if (off){ el.className='status-barra offline'; el.innerHTML = `📴 Sem internet. ${n ? n+' '+(n>1?'lançamentos esperando':'lançamento esperando')+' o sinal voltar.' : 'Pode lançar normalmente.'}`; }
+    else if (n){ el.className='status-barra pendente'; el.innerHTML = `${n} ${n>1?'lançamentos aguardando':'lançamento aguardando'} envio
+      <button onclick="tentarEnviar()" ${enviando?'disabled':''}>${enviando?'<span class="spinner"></span>Enviando':'<svg class="ic" style="width:16px;height:16px"><use href="#i-envio"/></svg>Enviar agora'}</button>`; }
+    else { el.className='status-barra ok'; el.innerHTML='✓ Tudo enviado'; }
+  } else {
+    const n = Repo.naoExportados().length;
+    if (n){ el.className='status-barra pendente'; el.innerHTML = `${n} ${n>1?'lançamentos assinados estão':'lançamento assinado está'} só neste celular
+      <button onclick="exportar(false)"><svg class="ic" style="width:16px;height:16px"><use href="#i-envio"/></svg>Exportar</button>`; }
+    else if (off){ el.className='status-barra offline'; el.innerHTML='📴 Sem internet. Pode lançar normalmente, fica tudo guardado no celular.'; }
+    else { el.innerHTML=''; el.className='status-barra'; }
+  }
+}
+async function tentarEnviar(silencioso){
+  if (!CONFIG.ENDPOINT || enviando || !online() || !Repo.aEnviar().length) { renderStatus(); return; }
+  enviando = true; renderStatus();
+  try { const n = await Repo.enviarPendentes(); if (!silencioso || n) toast(n>1 ? n+' lançamentos enviados' : 'Lançamento enviado', 'sucesso'); }
+  catch (e) { if (!silencioso) toast('Não deu pra enviar agora. O app tenta de novo quando o sinal melhorar.', 'erro'); }
+  enviando = false;
+  if (telaAtiva()==='tela-home') renderHome(); else renderStatus();
+}
+window.addEventListener('online', ()=>{ renderStatus(); tentarEnviar(true); });
+window.addEventListener('offline', renderStatus);
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && Repo.cat) tentarEnviar(true); });
+
+async function exportar(todos){
+  const lista = Repo.rdos().filter(r=>r.assinaturas && (todos || !r.exportado_em));
+  if (!lista.length){ toast(todos ? 'Nenhum lançamento assinado ainda.' : 'Nada novo pra exportar.'); return; }
+  const ap = Prefs.get().apontador || {};
+  const agora = new Date();
+  const slug = (ap.nome||'apontador').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
+  const nome = `lancamentos_${hojeISO()}_${agora.getHours()}h${String(agora.getMinutes()).padStart(2,'0')}_${slug}.json`;
+  const conteudo = JSON.stringify({ app:'produtividade-campo', versao_app:CONFIG.VERSAO_APP, exportado_em:agora.toISOString(),
+    aparelho_id:idAparelho(), apontador:ap, catalogo_versao:Repo.cat.versao||null, lancamentos:lista }, null, 1);
+  let feito = false;
+  for (const tipo of ['application/json','text/plain']) {
+    const arq = new File([conteudo], nome, { type:tipo });
+    if (navigator.canShare && navigator.canShare({ files:[arq] })) {
+      try { await navigator.share({ files:[arq], title:'Lançamentos de produtividade' }); feito = true; }
+      catch (e) { if (e.name==='AbortError') return; }
+      break;
+    }
+  }
+  if (!feito) {
+    const url = URL.createObjectURL(new Blob([conteudo], { type:'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  }
+  const em = agora.toISOString();
+  for (const r of lista) { r.exportado_em = em; await Repo.salvar(r); }
+  toast(lista.length>1 ? lista.length+' lançamentos exportados' : 'Lançamento exportado', 'sucesso');
+  renderHome();
+}
+
+/* ===================================================================== */
+/* HOME                                                                  */
+function avisosApp(){
+  let h = '';
+  if (swEsperando) h += `<div class="aviso-app"><span class="ic-grande">✨</span><div class="txt"><b>Nova versão do app</b><small>Atualize pra usar as melhorias.</small></div>
+    <button class="acao" onclick="atualizarApp()">Atualizar</button></div>`;
+  const instalado = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (!instalado && !Prefs.get().semInstalar) {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (promptInstalar) h += `<div class="aviso-app"><span class="ic-grande">📲</span><div class="txt"><b>Instale o app</b><small>Abre direto da tela inicial, mesmo sem internet.</small></div>
+      <button class="acao" onclick="instalarApp()">Instalar</button><button class="fechar" aria-label="Dispensar" onclick="Prefs.set('semInstalar',true);renderHome()">×</button></div>`;
+    else if (ios) h += `<div class="aviso-app"><span class="ic-grande">📲</span><div class="txt"><b>Instale o app</b><small>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</small></div>
+      <button class="fechar" aria-label="Dispensar" onclick="Prefs.set('semInstalar',true);renderHome()">×</button></div>`;
+  }
+  return h;
+}
+function renderHome(){
+  const obraId = Prefs.get().obra;
+  const obra = Repo.obra(obraId);
+  document.getElementById('home-sub').innerHTML = `${esc(obra?.nome||'')} <span class="troca">trocar</span>`;
+  renderStatus();
+
+  const equipsObra = Repo.equipamentos(obraId);
+  const todos = Repo.rdos().filter(r=>r.obra_id===obraId);
+  const cont = { todos:todos.length, rascunho:todos.filter(r=>r._sync==='rascunho').length, assinados:todos.filter(r=>r.assinaturas).length };
+  const filtros = [ ['todos','Todos'], ['rascunho','Rascunhos'], ['assinados','Assinados'] ];
+  document.getElementById('filtros-home').innerHTML = filtros.map(([k,n])=>
+    `<button class="chip-filtro ${filtroHome===k?'ativo':''}" onclick="filtroHome='${k}';renderHome()">${n}<span class="chip-n">${cont[k]||0}</span></button>`).join('');
+
+  const termo = (document.getElementById('busca-rdo').value||'').trim().toLowerCase();
+  let lista = todos.filter(r=>filtroHome==='todos' || (filtroHome==='rascunho' ? r._sync==='rascunho' : !!r.assinaturas));
+  if (termo) lista = lista.filter(r=>{ const e = Repo.equipamento(r.equipamento_id);
+    return [e?.descricao, e?.prefixo, e?.placa, r.operador].join(' ').toLowerCase().includes(termo); });
+  lista.sort((a,b)=> b.data.localeCompare(a.data) || (a.equipamento_id||'').localeCompare(b.equipamento_id||''));
+
+  let html = avisosApp();
+  if (!termo && filtroHome==='todos' && equipsObra.length){
+    const lancadosHoje = new Set(todos.filter(r=>r.data===hojeISO()).map(r=>r.equipamento_id));
+    const faltam = equipsObra.filter(e=>!lancadosHoje.has(e.id));
+    html += faltam.length
+      ? `<button class="faltam" onclick="abrirFaltamHoje()"><span class="faltam-num">${faltam.length}</span>
+          <span class="faltam-txt">${faltam.length>1?'máquinas sem lançamento hoje':'máquina sem lançamento hoje'}<small>${lancadosHoje.size} de ${equipsObra.length} já lançadas. Toque pra ver quais faltam.</small></span>
+          <span class="card-seta"><svg class="ic"><use href="#i-seta"/></svg></span></button>`
+      : `<div class="faltam completo"><span class="faltam-num">✓</span><span class="faltam-txt">Todas as máquinas lançadas hoje<small>${equipsObra.length} de ${equipsObra.length}</small></span></div>`;
+  }
+
+  if (!lista.length){
+    html += `<div class="vazio"><div class="vazio-icone">📋</div>${termo ? 'Nenhum lançamento encontrado com essa busca.' : todos.length ? 'Nenhum lançamento neste filtro.' : 'Nenhum lançamento ainda.<br/>Toque em <b>Novo lançamento</b> pra começar.'}</div>`;
+  } else {
+    let dataAtual = null;
+    lista.forEach(r=>{
+      if (r.data!==dataAtual){ dataAtual = r.data; html += `<div class="secao-titulo">${esc(fmtData(r.data, true))}</div>`; }
+      const e = Repo.equipamento(r.equipamento_id);
+      const res = resumoGrade(r.grade||{});
+      const delta = (r.horimetro_inicial!=null && r.horimetro_final!=null) ? r.horimetro_final - r.horimetro_inicial : null;
+      const cls = r._sync==='rascunho' ? 'sy-rascunho' : (r._sync==='enviado' || r.exportado_em ? 'sy-enviado' : 'sy-pendente');
+      html += `<button class="card card-rdo ${cls} ${travado(r)?'travado':''}" onclick="abrirRdo('${r.id}')">
+        <div class="card-topo-linha">${seloRdo(r)}${r._sync==='rascunho'&&res.semAtividade?`<span class="selo selo-rascunho">${res.semAtividade}h sem atividade</span>`:''}</div>
+        <div class="card-linha">
+          <span class="equip-ic">${e?.icone||'🚜'}</span>
+          <div style="flex:1;min-width:0"><div class="card-titulo">${esc(nomeEquip(e))}</div>
+            <div class="card-sub">${esc(idEquip(e))}${r.operador?' com '+esc(r.operador):''}</div></div>
+          <span class="card-seta"><svg class="ic"><use href="#i-seta"/></svg></span>
+        </div>
+        ${reguaMini(r.grade||{})}
+        <div class="card-rodape"><span><b>${res.ativ}h</b> em atividade</span><span>${res.apontadas}h apontadas</span>
+          ${delta!=null?`<span style="margin-left:auto">${fmtNum(delta)} ${unidMedidor(e)}</span>`:''}</div>
+      </button>`;
+    });
+  }
+  document.getElementById('lista-home').innerHTML = html;
+}
+
+function abrirFaltamHoje(){
+  const obraId = Prefs.get().obra;
+  const lancados = new Set(Repo.rdos().filter(r=>r.data===hojeISO()).map(r=>r.equipamento_id));
+  const faltam = Repo.equipamentos(obraId).filter(e=>!lancados.has(e.id));
+  escolherOpcao('Sem lançamento hoje', faltam.map(e=>({ valor:e.id, ic:e.icone||'🚜', rotulo:e.descricao,
+    sub:[idEquip(e), Repo.fornecedor(e.fornecedor_id).razao_social].filter(Boolean).join(', ') })), id=>{
+      novoLancamento(); rdo.equipamento_id = id; sugerirMedidor(); autosalvar(); passoMax = 1; irPasso(1);
+  });
+}
+function abrirTrocaObra(){
+  escolherOpcao('Trocar obra', Repo.obras().map(o=>({ valor:o.id, ic:'🏗️', rotulo:o.nome,
+    sub:Repo.equipamentos(o.id).length+' máquinas mobilizadas', sel:o.id===Prefs.get().obra })), id=>{
+      Prefs.set('obra', id); filtroHome='todos'; renderHome(); toast('Obra: '+Repo.obra(id).nome);
+  });
+}
+function abrirMenu(){
+  const ap = Prefs.get().apontador || {};
+  const ops = [];
+  if (!CONFIG.ENDPOINT) ops.push({ valor:'exportar', ic:'📤', rotulo:'Exportar todos os assinados', sub:'Gera de novo o arquivo com todos os lançamentos assinados' });
+  ops.push({ valor:'apontador', ic:'👷', rotulo:'Trocar apontador', sub:'Hoje: '+(ap.nome||'—') });
+  ops.push({ valor:'catalogo', ic:'🔄', rotulo:'Atualizar lista de máquinas', sub: online() ? 'Baixa o catálogo mais recente' : 'Precisa de internet' });
+  ops.push({ valor:'sobre', ic:'ℹ️', rotulo:'Sobre o app', sub:'Versão '+CONFIG.VERSAO_APP });
+  escolherOpcao('Opções', ops, async v=>{
+    if (v==='exportar') exportar(true);
+    if (v==='apontador') abrirIdentificacao();
+    if (v==='catalogo') { try { await Repo.carregarCatalogo(); renderHome(); toast('Lista de máquinas atualizada', 'sucesso'); } catch (e) { toast('Não foi possível atualizar agora.', 'erro'); } }
+    if (v==='sobre') abrirModal('Sobre o app', `<dl class="lista-def">
+      <div><dt>Versão</dt><dd>${CONFIG.VERSAO_APP}</dd></div>
+      <div><dt>Catálogo</dt><dd>${esc(Repo.cat.versao||'—')}</dd></div>
+      <div><dt>Aparelho</dt><dd>${esc(descricaoAparelho())}</dd></div>
+      <div><dt>Código do aparelho</dt><dd class="codigo" style="font-size:11px">${esc(idAparelho().slice(0,13))}</dd></div>
+      <div><dt>Lançamentos guardados</dt><dd>${Repo.rdos().length}</dd></div></dl>
+      <button class="btn btn-secundario" onclick="fecharModal()">Fechar</button>`);
+  });
+}
+
+/* ===================================================================== */
+/* ASSISTENTE                                                            */
+function novoLancamento(){
+  rdo = novoRdoVazio(); passoAtual = 0; passoMax = 0; secoesAbertas = {}; window._buscaEquip = '';
+  prepararPincel(); mostrarTela('tela-rdo'); renderRdo();
+}
+function abrirRdo(id){
+  const r = Repo.rdo(id); if (!r) return;
+  rdo = JSON.parse(JSON.stringify(r));
+  secoesAbertas = {}; prepararPincel();
+  passoMax = 4;
+  passoAtual = bloqueado(rdo) ? 4 : (rdo.equipamento_id ? 2 : 0);
+  mostrarTela('tela-rdo'); renderRdo();
+}
+function prepararPincel(){
+  const ats = Repo.atividades(rdo.obra_id), lcs = Repo.locais(rdo.obra_id);
+  const ultimo = Object.values(rdo.grade||{}).reverse().find(g=>g.evento==='Em Atividade' && g.atividade);
+  pincel = { evento:'Em Atividade', atividade: ultimo?.atividade || ats[0] || '', local: ultimo?.local || lcs[0] || '' };
+}
+let _autoT;
+function autosalvar(){
+  if (!rdo || !rdo.equipamento_id || bloqueado(rdo)) return;
+  clearTimeout(_autoT);
+  _autoT = setTimeout(()=>{ Repo.salvar(rdo).catch(()=>{}); }, 300);
+}
+function irPasso(n){
+  if (n>passoMax+1) return;
+  passoAtual = n; passoMax = Math.max(passoMax, n); renderRdo(); window.scrollTo(0,0);
+}
+function voltarPasso(){
+  if (passoAtual>0 && !bloqueado(rdo)) irPasso(passoAtual-1);
+  else sairDoRdo();
+}
+function sairDoRdo(){
+  clearTimeout(_autoT);
+  if (rdo && rdo.equipamento_id && !bloqueado(rdo)) Repo.salvar(rdo).catch(()=>{});
+  rdo = null; pads = {}; mostrarTela('tela-home'); renderHome();
+}
+function abrirMenuRdo(){
+  const ops = [{ valor:'sair', ic:'💾', rotulo: bloqueado(rdo) ? 'Voltar à lista' : 'Sair e continuar depois', sub: bloqueado(rdo) ? '' : 'O rascunho fica salvo no celular' }];
+  if (!bloqueado(rdo) && Repo.rdo(rdo.id)) ops.push({ valor:'excluir', ic:'🗑️', rotulo:'Excluir rascunho', perigo:true });
+  escolherOpcao('Lançamento', ops, async v=>{
+    if (v==='sair') sairDoRdo();
+    if (v==='excluir' && confirm('Excluir este rascunho? Não dá pra desfazer.')){ await Repo.excluir(rdo.id); rdo=null; mostrarTela('tela-home'); renderHome(); toast('Rascunho excluído'); }
+  });
+}
+
+function renderRdo(){
+  const e = Repo.equipamento(rdo.equipamento_id);
+  const salvo = Repo.rdo(rdo.id);
+  document.getElementById('rdo-titulo').textContent = e ? (idEquip(e) || e.descricao) : (salvo ? 'Lançamento' : 'Novo lançamento');
+  document.getElementById('rdo-sub').textContent = e ? fmtData(rdo.data, true) + ', ' + e.descricao : (Repo.obra(rdo.obra_id)?.nome||'');
+  const trava = bloqueado(rdo);
+  document.getElementById('passos-rdo').innerHTML = PASSOS.map((p,i)=>{
+    const cls = i===passoAtual ? 'atual' : ((trava || i<=passoMax) ? 'feito' : '');
+    const clic = !trava && i<=passoMax && rdo.equipamento_id && i!==passoAtual && i<5;
+    return `<button class="passo ${cls} ${clic?'clicavel':''}" ${clic?`onclick="irPasso(${i})"`:'tabindex="-1"'} aria-label="${p}">
+      <span class="bola">${cls==='feito'?'✓':i+1}</span>${p}</button>`;
+  }).join('');
+  pads = {};
+  document.getElementById('rdo-corpo').innerHTML = [passoMaquina, passoDia, passoHoras, passoOcorrencias, passoRevisao, passoAssinar][passoAtual]();
+  if (passoAtual===2) ligarRegua();
+  if (passoAtual===4 && assinado(rdo)) conferirIntegridade();
+  if (passoAtual===5) ligarAssinatura();
+}
+function resumoEquipHtml(){
+  const e = Repo.equipamento(rdo.equipamento_id); if (!e) return '';
+  return `<div class="resumo-equip"><span class="equip-ic">${e.icone||'🚜'}</span><div style="flex:1;min-width:0">
+    <div class="card-titulo">${esc(e.descricao)}</div><div class="card-sub">${esc(idEquip(e))}, ${esc(fmtData(rdo.data,true))}</div></div></div>`;
+}
+
+/* ---------- Passo 1: Máquina ---------- */
+let filtroForn = '';
+function passoMaquina(){
+  const equips = Repo.equipamentos(rdo.obra_id);
+  const forns = [...new Set(equips.map(e=>e.fornecedor_id))];
+  const termo = (window._buscaEquip||'').toLowerCase();
+  const lancHoje = new Set(Repo.rdos().filter(r=>r.data===rdo.data && r.id!==rdo.id).map(r=>r.equipamento_id));
+  const lista = equips.filter(e=>(!filtroForn || e.fornecedor_id===filtroForn) &&
+    (!termo || [e.descricao,e.prefixo,e.placa].join(' ').toLowerCase().includes(termo)));
+  return `<div class="passo-titulo">Qual máquina?</div>
+    <div class="passo-desc">Máquinas mobilizadas em ${esc(Repo.obra(rdo.obra_id)?.nome||'')}.</div>
+    <label class="busca" style="margin-bottom:4px"><svg class="ic" style="width:19px;height:19px"><use href="#i-busca"/></svg>
+      <input type="search" placeholder="Buscar por nome, prefixo ou placa" value="${esc(window._buscaEquip||'')}" oninput="window._buscaEquip=this.value;atualizarListaEquip()" enterkeyhint="search"/></label>
+    <div class="filtros"><button class="chip-filtro ${!filtroForn?'ativo':''}" onclick="filtroForn='';renderRdo()">Todos os fornecedores</button>
+      ${forns.map(f=>`<button class="chip-filtro ${filtroForn===f?'ativo':''}" onclick="filtroForn='${f}';renderRdo()">${esc(Repo.fornecedor(f).razao_social)}</button>`).join('')}</div>
+    <div id="lista-equip">${lista.length ? lista.map(e=>`<button class="card ${rdo.equipamento_id===e.id?'selecionado':''}" onclick="escolherEquip('${e.id}')">
+      <div class="card-linha"><span class="equip-ic">${e.icone||'🚜'}</span>
+        <div style="flex:1;min-width:0"><div class="card-titulo">${esc(e.descricao)}</div>
+          <div class="card-sub">${esc([idEquip(e), Repo.fornecedor(e.fornecedor_id).razao_social].filter(Boolean).join(', '))}</div></div>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          <span class="selo selo-neutro">${ehKm(e)?'Km':'Horas'}</span>
+          ${lancHoje.has(e.id)?`<span class="selo selo-enviado">Já lançada</span>`:''}</div>
+      </div></button>`).join('') : '<div class="vazio">Nenhuma máquina com esse filtro.</div>'}</div>`;
+}
+function atualizarListaEquip(){
+  const pos = document.activeElement?.selectionStart;
+  renderRdo();
+  const novo = document.querySelector('#rdo-corpo input[type=search]'); if (novo){ novo.focus(); try{ novo.setSelectionRange(pos,pos); }catch(e){} }
+}
+function escolherEquip(id){
+  const mudou = rdo.equipamento_id !== id;
+  rdo.equipamento_id = id;
+  if (mudou){ rdo.horimetro_inicial = null; rdo.horimetro_final = null; sugerirMedidor(); }
+  autosalvar(); irPasso(1);
+}
+function sugerirMedidor(){
+  const ult = Repo.ultimoMedidor(rdo.equipamento_id, rdo.data);
+  if (ult && rdo.horimetro_inicial==null) rdo.horimetro_inicial = ult.valor;
+}
+
+/* ---------- Passo 2: Dia ---------- */
+function passoDia(){
+  const e = Repo.equipamento(rdo.equipamento_id);
+  const dup = Repo.doDia(rdo.equipamento_id, rdo.data, rdo.id);
+  const ult = Repo.ultimoMedidor(rdo.equipamento_id, rdo.data);
+  const rot = rotuloMedidor(e), un = unidMedidor(e);
+  const ini = rdo.horimetro_inicial, fim = rdo.horimetro_final;
+  let ajudaMed = '';
+  if (ini!=null && fim!=null && fim<ini) ajudaMed = `<div class="ajuda alerta">O final está menor que o inicial.</div>`;
+  else if (ini!=null && fim!=null) ajudaMed = `<div class="ajuda">${fmtNum(fim-ini)} ${un} no dia.</div>`;
+  else if (ult) ajudaMed = `<div class="ajuda">Último final lançado: ${fmtNum(ult.valor)} ${un} (${esc(fmtData(ult.data))}).</div>`;
+  if (ini!=null && ult && ini<ult.valor) ajudaMed = `<div class="ajuda alerta">O inicial está menor que o último final lançado (${fmtNum(ult.valor)} ${un}, ${esc(fmtData(ult.data))}).</div>`;
+  return resumoEquipHtml() + `
+    ${dup ? `<div class="banner-duplicado"><b>Essa máquina já tem lançamento nesse dia.</b><br/>Abra o existente pra não lançar duas vezes, ou escolha outra data.
+      <button class="btn btn-secundario" onclick="abrirRdo('${dup.id}')">Abrir o lançamento existente</button></div>` : ''}
+    <div class="campo"><span class="rotulo">Data *</span><input type="date" value="${rdo.data}" max="${hojeISO()}" onchange="rdo.data=this.value||hojeISO();sugerirMedidor();autosalvar();renderRdo()"/></div>
+    <div class="linha2">
+      <div class="campo" style="flex:2"><span class="rotulo">Operador</span><input type="text" value="${esc(rdo.operador)}" autocomplete="off" autocapitalize="words" oninput="rdo.operador=this.value;autosalvar()"/></div>
+      <div class="campo"><span class="rotulo">Matrícula</span><input type="text" inputmode="numeric" value="${esc(rdo.matricula)}" oninput="rdo.matricula=this.value;autosalvar()"/></div>
+    </div>
+    <div class="linha2">
+      <div class="campo"><span class="rotulo">${rot} inicial (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(ini)}" onchange="rdo.horimetro_inicial=parseNum(this.value);autosalvar();renderRdo()"/></div>
+      <div class="campo"><span class="rotulo">${rot} final (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(fim)}" placeholder="No fim do dia" onchange="rdo.horimetro_final=parseNum(this.value);autosalvar();renderRdo()"/></div>
+    </div>
+    ${ajudaMed}
+    <div class="barra-acao"><button class="btn" ${dup?'disabled':''} onclick="irPasso(2)">Continuar para as horas</button></div>`;
+}
+
+/* ---------- Passo 3: Horas ---------- */
+function celulaHtml(h){
+  const k = HORAS[h], g = rdo.grade[k];
+  if (!g || !g.evento) return `<div class="hora" data-h="${h}" role="button" aria-label="${k} vazia"><span class="h">${k.replace('h','')}</span></div>`;
+  const ev = Repo.evento(g.evento);
+  const semAtv = g.evento==='Em Atividade' && (!g.atividade || !g.local);
+  const txt = g.evento==='Em Atividade' && g.atividade ? g.atividade : (ev?.curto || g.evento);
+  return `<div class="hora pintada ${semAtv?'sem-ativ':''}" data-h="${h}" style="--c:${corEvento(g.evento)}" role="button" aria-label="${k} ${esc(g.evento)}">
+    <span class="h">${k.replace('h','')}</span><span class="ev">${esc(txt)}</span></div>`;
+}
+function passoHoras(){
+  let regua = '';
+  FAIXAS.forEach(f=>{ regua += `<div class="regua-rot">${f.nome}</div>`; for (let h=f.de; h<f.de+6; h++) regua += celulaHtml(h); });
+  const ehAtiv = !pincel.borracha && pincel.evento==='Em Atividade';
+  return resumoEquipHtml() + `
+    <div class="passo-titulo">Como foi o dia?</div>
+    <div class="passo-desc">Escolha o evento lá embaixo e toque nas horas, ou arraste o dedo por várias de uma vez. Tocar de novo numa hora igual apaga.</div>
+    <div class="atalhos">
+      <button class="atalho" onclick="preencherFaixa(7,16)">Turno 07h–17h</button>
+      <button class="atalho" onclick="abrirIntervalo()">Escolher intervalo</button>
+      <button class="atalho" onclick="copiarDiaAnterior()">Copiar dia anterior</button>
+      <button class="atalho perigo" onclick="limparDia()">Limpar dia</button>
+    </div>
+    <div class="contagem" id="contagem"></div>
+    <div class="regua" id="regua">${regua}</div>
+    <div class="secao-titulo">Resumo do dia</div>
+    <div id="trechos"></div>
+    <div class="pincel">
+      <div class="pincel-rot">Pincel: o que a máquina estava fazendo?</div>
+      <div class="eventos">${Repo.eventos().map((ev,i)=>`<button class="ev-chip ${!pincel.borracha&&pincel.evento===ev.nome?'sel':''}" style="--c:${ev.cor}" onclick="escolherEvento(${i})"><span class="bolinha"></span>${esc(ev.nome)}</button>`).join('')}
+        <button class="ev-chip borracha ${pincel.borracha?'sel':''}" onclick="pincel={borracha:true,atividade:pincel.atividade,local:pincel.local};renderRdo()"><span class="bolinha"></span>Apagar</button></div>
+      ${ehAtiv ? `<div class="pincel-detalhe">
+        <button class="${pincel.atividade?'':'falta'}" onclick="escolherDetalhe('atividade')"><small>Atividade</small><span>${esc(pincel.atividade||'Escolher')}</span></button>
+        <button class="${pincel.local?'':'falta'}" onclick="escolherDetalhe('local')"><small>Local</small><span>${esc(pincel.local||'Escolher')}</span></button>
+      </div>` : ''}
+      <button class="btn" onclick="irPasso(3)">Continuar</button>
+    </div>`;
+}
+function escolherEvento(i){ pincel = { evento:Repo.eventos()[i].nome, atividade:pincel.atividade, local:pincel.local }; renderRdo(); }
+function escolherDetalhe(campo){
+  const lista = campo==='atividade' ? Repo.atividades(rdo.obra_id) : Repo.locais(rdo.obra_id);
+  escolherOpcao(campo==='atividade' ? 'Atividade' : 'Local', lista.map(n=>({ valor:n, rotulo:n, sel:pincel[campo]===n })), v=>{ pincel[campo]=v; renderRdo(); });
+}
+function valorPincel(){
+  if (pincel.borracha) return null;
+  return pincel.evento==='Em Atividade' ? { evento:pincel.evento, atividade:pincel.atividade, local:pincel.local } : { evento:pincel.evento };
+}
+function igualPincel(g){
+  const v = valorPincel(); if (!v || !g) return false;
+  return g.evento===v.evento && (g.atividade||'')===(v.atividade||'') && (g.local||'')===(v.local||'');
+}
+function aplicarHora(h){
+  const k = HORAS[h], v = valorPincel();
+  if (v) rdo.grade[k] = v; else delete rdo.grade[k];
+  const cel = document.querySelector(`.hora[data-h="${h}"]`); if (cel) cel.outerHTML = celulaHtml(h);
+}
+function atualizarResumoHoras(){
+  const r = resumoGrade(rdo.grade);
+  const c = document.getElementById('contagem');
+  if (c) c.innerHTML = `<span><b>${r.apontadas}h</b> apontadas</span><span><b>${r.ativ}h</b> em atividade</span>${r.semAtividade?`<span style="color:var(--warn-txt)"><b style="color:inherit">${r.semAtividade}h</b> sem atividade ou local</span>`:''}`;
+  const t = document.getElementById('trechos'); if (!t) return;
+  const tr = trechos(rdo.grade);
+  t.innerHTML = tr.length ? `<div class="trechos">${tr.map(x=>`<div class="trecho" style="--c:${corEvento(x.g.evento)}">
+    <span class="trecho-faixa"></span><span class="trecho-hora">${fmtFaixa(x.de,x.ate)}</span>
+    <span class="trecho-txt">${esc(x.g.evento)}${x.g.evento==='Em Atividade'?`<small>${esc(x.g.atividade||'sem atividade')}, ${esc(x.g.local||'sem local')}</small>`:''}</span>
+    <span class="trecho-dur">${x.ate-x.de+1}h</span></div>`).join('')}</div>`
+    : `<div class="vazio" style="padding:20px">Nenhuma hora apontada ainda.</div>`;
+}
+function ligarRegua(){
+  atualizarResumoHoras();
+  const regua = document.getElementById('regua'); if (!regua) return;
+  let gesto = null;
+  const horaEm = (x,y)=>{ const el = document.elementFromPoint(x,y)?.closest('.hora'); return el && regua.contains(el) ? +el.dataset.h : null; };
+  regua.addEventListener('pointerdown', ev=>{
+    const h = horaEm(ev.clientX, ev.clientY); if (h==null) return;
+    ev.preventDefault();
+    gesto = { inicio:h, ultimo:h, moveu:false, desfazer: igualPincel(rdo.grade[HORAS[h]]) };
+    if (!gesto.desfazer) aplicarHora(h);
+    try { regua.setPointerCapture(ev.pointerId); } catch(e){}
+    if (navigator.vibrate) navigator.vibrate(8);
+  });
+  regua.addEventListener('pointermove', ev=>{
+    if (!gesto) return;
+    const h = horaEm(ev.clientX, ev.clientY); if (h==null || h===gesto.ultimo) return;
+    if (!gesto.moveu){ gesto.moveu = true; if (gesto.desfazer) aplicarHora(gesto.inicio); }
+    const passo = h>gesto.ultimo ? 1 : -1;
+    for (let i=gesto.ultimo+passo; passo>0 ? i<=h : i>=h; i+=passo) aplicarHora(i);
+    gesto.ultimo = h;
+  });
+  const fim = ()=>{
+    if (!gesto) return;
+    if (!gesto.moveu && gesto.desfazer){ delete rdo.grade[HORAS[gesto.inicio]]; const c=document.querySelector(`.hora[data-h="${gesto.inicio}"]`); if(c) c.outerHTML=celulaHtml(gesto.inicio); }
+    gesto = null; atualizarResumoHoras(); autosalvar();
+  };
+  regua.addEventListener('pointerup', fim); regua.addEventListener('pointercancel', fim);
+}
+function preencherFaixa(de, ate){
+  for (let h=de; h<=ate; h++) { const v = valorPincel(); if (v) rdo.grade[HORAS[h]] = v; else delete rdo.grade[HORAS[h]]; }
+  autosalvar(); renderRdo();
+  toast(`${fmtFaixa(de,ate)}: ${pincel.borracha?'apagado':pincel.evento}`);
+}
+function abrirIntervalo(){
+  const op = (sel)=>HORAS.map((k,h)=>`<option value="${h}" ${h===sel?'selected':''}>${k}</option>`).join('');
+  abrirModal('Preencher intervalo', `
+    <div class="passo-desc">Aplica o pincel atual (${esc(pincel.borracha?'Apagar':pincel.evento)}) em todas as horas do intervalo.</div>
+    <div class="linha2"><div class="campo"><span class="rotulo">Das</span><select id="int-de">${op(7)}</select></div>
+    <div class="campo"><span class="rotulo">Até o fim de</span><select id="int-ate">${op(16)}</select></div></div>
+    <div class="erro-msg" id="int-erro"></div>
+    <button class="btn" onclick="confirmarIntervalo()">Aplicar</button>`);
+}
+function confirmarIntervalo(){
+  const de = +document.getElementById('int-de').value, ate = +document.getElementById('int-ate').value;
+  if (ate<de){ document.getElementById('int-erro').textContent = 'A hora final não pode ser antes da inicial.'; return; }
+  fecharModal(); preencherFaixa(de, ate);
+}
+function copiarDiaAnterior(){
+  const ant = Repo.rdos().filter(r=>r.equipamento_id===rdo.equipamento_id && r.data<rdo.data).sort((a,b)=>b.data.localeCompare(a.data))[0];
+  if (!ant){ toast('Essa máquina não tem lançamento anterior.', 'erro'); return; }
+  if (Object.keys(rdo.grade).length && !confirm('Substituir as horas deste dia pelas de '+fmtData(ant.data)+'?')) return;
+  rdo.grade = JSON.parse(JSON.stringify(ant.grade||{})); autosalvar(); renderRdo(); toast('Horas copiadas de '+fmtData(ant.data));
+}
+function limparDia(){
+  if (!Object.keys(rdo.grade).length) return;
+  if (!confirm('Apagar todas as horas deste dia?')) return;
+  rdo.grade = {}; autosalvar(); renderRdo();
+}
+
+/* ---------- Passo 4: Extras ---------- */
+function secao(id, ic, titulo, n, corpo){
+  return `<div class="secao-opcional ${secoesAbertas[id]?'aberta':''}">
+    <button class="secao-opcional-cab" onclick="secoesAbertas['${id}']=!secoesAbertas['${id}'];renderRdo()" aria-expanded="${!!secoesAbertas[id]}">
+      <span>${ic}</span>${titulo}${n?`<span class="contador">${n}</span>`:''}<svg class="ic ic-seta"><use href="#i-baixo"/></svg></button>
+    <div class="secao-opcional-corpo">${corpo}</div></div>`;
+}
+function passoOcorrencias(){
+  const e = Repo.equipamento(rdo.equipamento_id), un = unidMedidor(e), rot = rotuloMedidor(e);
+  const item = (txt, sub, tipo, i)=>`<div class="item"><div class="item-txt">${txt}${sub?`<small>${sub}</small>`:''}</div>
+    <button class="btn-remover" aria-label="Remover" onclick="rdo.${tipo}.splice(${i},1);autosalvar();renderRdo()"><svg class="ic" style="width:19px;height:19px"><use href="#i-lixo"/></svg></button></div>`;
+  const man = rdo.manutencoes.map((m,i)=>item(esc(m.descricao), esc([m.hora_inicio&&m.hora_fim?m.hora_inicio+' às '+m.hora_fim:m.hora_inicio, m.horimetro_km!=null?fmtNum(m.horimetro_km)+' '+un:''].filter(Boolean).join(', ')), 'manutencoes', i)).join('');
+  const abs = rdo.abastecimentos.map((a,i)=>item(`${fmtNum(a.litros)} L de ${esc(a.combustivel||'combustível')}`, esc([a.hora, a.horimetro_km!=null?fmtNum(a.horimetro_km)+' '+un:''].filter(Boolean).join(', ')), 'abastecimentos', i)).join('');
+  const ajs = rdo.ajustes.map((a,i)=>item(`${a.tipo==='acrescimo'?'Acréscimo':'Desconto'}: ${esc(a.descricao)}`, fmtR$(a.valor), 'ajustes', i)).join('');
+  return resumoEquipHtml() + `
+    <div class="passo-titulo">Teve mais alguma coisa?</div>
+    <div class="passo-desc">Tudo opcional. Abra só o que aconteceu neste dia.</div>
+    ${secao('ab','⛽','Abastecimentos', rdo.abastecimentos.length, `<div class="item-lista">${abs}</div>
+      <div class="linha2"><div class="campo"><span class="rotulo">Hora *</span><input type="time" id="ab-hora"/></div>
+        <div class="campo"><span class="rotulo">Litros *</span><input type="text" inputmode="decimal" id="ab-litros"/></div></div>
+      <div class="linha2"><div class="campo"><span class="rotulo">Combustível</span><select id="ab-comb">${Repo.combustiveis().map(c=>`<option>${esc(c)}</option>`).join('')}</select></div>
+        <div class="campo"><span class="rotulo">${rot} (${un})</span><input type="text" inputmode="decimal" id="ab-med"/></div></div>
+      <div class="erro-msg" id="ab-erro"></div><button class="btn-add-linha" onclick="addAbastecimento()">+ Adicionar abastecimento</button>`)}
+    ${secao('ma','🔧','Manutenções', rdo.manutencoes.length, `<div class="item-lista">${man}</div>
+      <div class="campo"><span class="rotulo">O que aconteceu? *</span><input type="text" id="ma-desc" placeholder="Ex: troca de mangueira hidráulica"/></div>
+      <div class="linha2"><div class="campo"><span class="rotulo">Início</span><input type="time" id="ma-ini"/></div>
+        <div class="campo"><span class="rotulo">Fim</span><input type="time" id="ma-fim"/></div></div>
+      <div class="campo"><span class="rotulo">${rot} (${un})</span><input type="text" inputmode="decimal" id="ma-med"/></div>
+      <div class="erro-msg" id="ma-erro"></div><button class="btn-add-linha" onclick="addManutencao()">+ Adicionar manutenção</button>`)}
+    ${secao('aj','💰','Acréscimos e descontos', rdo.ajustes.length, `<div class="item-lista">${ajs}</div>
+      <div class="toggle" id="aj-tipo"><button class="sel" data-v="desconto" onclick="selToggle(this)">Desconto</button><button data-v="acrescimo" onclick="selToggle(this)">Acréscimo</button></div>
+      <div class="campo"><span class="rotulo">Descrição *</span><input type="text" id="aj-desc" placeholder="Ex: para-brisa, multa"/></div>
+      <div class="campo"><span class="rotulo">Valor (R$) *</span><input type="text" inputmode="decimal" id="aj-valor"/></div>
+      <div class="erro-msg" id="aj-erro"></div><button class="btn-add-linha" onclick="addAjuste()">+ Adicionar</button>`)}
+    <div class="campo" style="margin-top:6px"><span class="rotulo">Observação do dia</span>
+      <textarea placeholder="Algo que o escritório precisa saber" oninput="rdo.ocorrencia_geral=this.value;autosalvar()">${esc(rdo.ocorrencia_geral)}</textarea></div>
+    <div class="barra-acao"><button class="btn" onclick="irPasso(4)">Revisar lançamento</button></div>`;
+}
+function selToggle(b){ b.parentNode.querySelectorAll('button').forEach(x=>x.classList.toggle('sel', x===b)); }
+function addAbastecimento(){
+  const hora = document.getElementById('ab-hora').value, litros = parseNum(document.getElementById('ab-litros').value);
+  if (!hora || !litros){ document.getElementById('ab-erro').textContent = 'Informe a hora e os litros.'; return; }
+  rdo.abastecimentos.push({ hora, litros, combustivel:document.getElementById('ab-comb').value, horimetro_km:parseNum(document.getElementById('ab-med').value) });
+  autosalvar(); renderRdo(); toast('Abastecimento adicionado');
+}
+function addManutencao(){
+  const descricao = document.getElementById('ma-desc').value.trim();
+  if (!descricao){ document.getElementById('ma-erro').textContent = 'Descreva o que aconteceu.'; return; }
+  rdo.manutencoes.push({ descricao, hora_inicio:document.getElementById('ma-ini').value||null, hora_fim:document.getElementById('ma-fim').value||null, horimetro_km:parseNum(document.getElementById('ma-med').value) });
+  autosalvar(); renderRdo(); toast('Manutenção adicionada');
+}
+function addAjuste(){
+  const descricao = document.getElementById('aj-desc').value.trim(), valor = parseNum(document.getElementById('aj-valor').value);
+  if (!descricao || !valor || valor<=0){ document.getElementById('aj-erro').textContent = 'Informe a descrição e um valor maior que zero.'; return; }
+  rdo.ajustes.push({ tipo:document.querySelector('#aj-tipo .sel').dataset.v, descricao, valor });
+  autosalvar(); renderRdo(); toast('Lançamento avulso adicionado');
+}
+
+/* ---------- Passo 5: Revisão ---------- */
+function verificacoes(){
+  const e = Repo.equipamento(rdo.equipamento_id), r = resumoGrade(rdo.grade), un = unidMedidor(e);
+  const av = [];
+  if (!r.apontadas) av.push({ txt:'Nenhuma hora apontada.', passo:2, bloqueia:true });
+  if (Repo.doDia(rdo.equipamento_id, rdo.data, rdo.id)) av.push({ txt:'Já existe outro lançamento dessa máquina nesse dia.', passo:1, bloqueia:true });
+  if (rdo.horimetro_inicial!=null && rdo.horimetro_final!=null && rdo.horimetro_final<rdo.horimetro_inicial)
+    av.push({ txt:`${rotuloMedidor(e)} final menor que o inicial.`, passo:1, bloqueia:true });
+  if (r.semAtividade) av.push({ txt:`${r.semAtividade}h em atividade sem atividade ou local definidos.`, passo:2 });
+  if (r.buracos) av.push({ txt:`${r.buracos}h vazias no meio do dia, entre ${HORAS[r.prim]} e ${HORAS[r.ult+1]||'24h'}.`, passo:2 });
+  if (rdo.horimetro_final==null) av.push({ txt:`${rotuloMedidor(e)} final não informado.`, passo:1 });
+  if (!ehKm(e) && rdo.horimetro_inicial!=null && rdo.horimetro_final!=null){
+    const d = rdo.horimetro_final - rdo.horimetro_inicial;
+    if (Math.abs(d - r.ativ) > 1) av.push({ txt:`O horímetro marcou ${fmtNum(d)} h, mas foram apontadas ${r.ativ}h em atividade.`, passo:2 });
+  }
+  const ult = Repo.ultimoMedidor(rdo.equipamento_id, rdo.data);
+  if (ult && rdo.horimetro_inicial!=null && rdo.horimetro_inicial<ult.valor)
+    av.push({ txt:`Inicial menor que o último final lançado (${fmtNum(ult.valor)} ${un}).`, passo:1 });
+  if (!rdo.operador) av.push({ txt:'Operador não informado.', passo:1 });
+  return av;
+}
+function numerosDia(){
+  const e = Repo.equipamento(rdo.equipamento_id), r = resumoGrade(rdo.grade), un = unidMedidor(e);
+  const delta = rdo.horimetro_inicial!=null && rdo.horimetro_final!=null ? rdo.horimetro_final - rdo.horimetro_inicial : null;
+  const litros = rdo.abastecimentos.reduce((s,a)=>s+(a.litros||0),0);
+  return `<div class="numeros">
+    <div class="numero destaque"><b>${r.ativ}h</b><span>em atividade</span></div>
+    <div class="numero"><b>${r.apontadas}h</b><span>apontadas no dia</span></div>
+    <div class="numero"><b>${delta!=null?fmtNum(delta)+' '+un:'—'}</b><span>no ${rotuloMedidor(e).toLowerCase()}</span></div>
+    <div class="numero"><b>${litros?fmtNum(litros)+' L':'—'}</b><span>abastecidos</span></div></div>`;
+}
+function detalhesDia(){
+  const e = Repo.equipamento(rdo.equipamento_id), r = resumoGrade(rdo.grade), un = unidMedidor(e);
+  const paradas = Object.entries(r.porEvento).filter(([n])=>n!=='Em Atividade').sort((a,b)=>b[1]-a[1]);
+  return `${paradas.length ? `<div class="secao-titulo">Horas fora de atividade</div><dl class="lista-def">${paradas.map(([n,h])=>`<div><dt>${esc(n)}</dt><dd>${h}h</dd></div>`).join('')}</dl>` : ''}
+    <div class="secao-titulo">Dados do dia</div>
+    <dl class="lista-def">
+      <div><dt>Data</dt><dd>${esc(fmtDataCompleta(rdo.data))}</dd></div>
+      <div><dt>Operador</dt><dd>${esc(rdo.operador||'—')}${rdo.matricula?' ('+esc(rdo.matricula)+')':''}</dd></div>
+      <div><dt>${rotuloMedidor(e)}</dt><dd>${fmtNum(rdo.horimetro_inicial)} a ${fmtNum(rdo.horimetro_final)} ${un}</dd></div>
+      <div><dt>Manutenções</dt><dd>${rdo.manutencoes.length||'Nenhuma'}</dd></div>
+      <div><dt>Acréscimos e descontos</dt><dd>${rdo.ajustes.length ? rdo.ajustes.map(a=>(a.tipo==='acrescimo'?'+':'−')+' '+fmtR$(a.valor)).join(', ') : 'Nenhum'}</dd></div>
+      ${rdo.ocorrencia_geral?`<div><dt>Observação</dt><dd style="font-weight:500">${esc(rdo.ocorrencia_geral)}</dd></div>`:''}
+    </dl>`;
+}
+function passoRevisao(){
+  if (bloqueado(rdo)) return comprovanteHtml();
+  const av = verificacoes();
+  const bloqueia = av.some(a=>a.bloqueia);
+  return resumoEquipHtml() + numerosDia() + reguaMini(rdo.grade) + '<div style="height:14px"></div>' +
+    (av.length ? `<div class="avisos">${av.map(a=>`<div class="aviso">${a.bloqueia?'⛔':'⚠️'}<span>${esc(a.txt)}</span><button onclick="irPasso(${a.passo})">Corrigir</button></div>`).join('')}</div>`
+      : `<div class="avisos"><div class="aviso ok">✓ Tudo certo com este lançamento.</div></div>`) +
+    detalhesDia() +
+    `<div class="barra-acao"><button class="btn" ${bloqueia?'disabled':''} onclick="irPasso(5)">Seguir para assinaturas</button></div>`;
+}
+
+/* ===================================================================== */
+/* ASSINATURA                                                            */
+class PadAssinatura {
+  constructor(canvas, aoMudar){
+    this.c = canvas; this.ctx = canvas.getContext('2d'); this.pontos = 0; this.aoMudar = aoMudar; this.largura = 0;
+    this._ajustar();
+    new ResizeObserver(()=>this._ajustar()).observe(canvas);
+    let desenhando = false, ult = null;
+    const pos = ev=>{ const r = this.c.getBoundingClientRect(); return { x:ev.clientX-r.left, y:ev.clientY-r.top }; };
+    canvas.addEventListener('pointerdown', ev=>{
+      ev.preventDefault(); desenhando = true; ult = pos(ev);
+      try { canvas.setPointerCapture(ev.pointerId); } catch(e){}
+      this.ctx.beginPath(); this.ctx.arc(ult.x, ult.y, 1.2, 0, Math.PI*2); this.ctx.fill(); this.pontos++;
+    });
+    canvas.addEventListener('pointermove', ev=>{
+      if (!desenhando) return;
+      const evs = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
+      for (const e of evs) {
+        const p = pos(e);
+        this.ctx.beginPath(); this.ctx.moveTo(ult.x, ult.y);
+        const mx = (ult.x+p.x)/2, my = (ult.y+p.y)/2;
+        this.ctx.quadraticCurveTo(ult.x, ult.y, mx, my); this.ctx.lineTo(p.x, p.y); this.ctx.stroke();
+        ult = p; this.pontos++;
+      }
+    });
+    const fim = ()=>{ if (!desenhando) return; desenhando = false; this.c.parentNode.classList.toggle('com-traco', this.pontos>0); if (this.aoMudar) this.aoMudar(); };
+    canvas.addEventListener('pointerup', fim); canvas.addEventListener('pointercancel', fim);
+  }
+  _ajustar(){
+    const r = this.c.getBoundingClientRect();
+    if (!r.width || Math.abs(r.width-this.largura)<1) return;
+    const anterior = this.pontos ? this.c.toDataURL() : null, larguraAnt = this.largura;
+    const dpr = Math.max(1, window.devicePixelRatio||1);
+    this.largura = r.width;
+    this.c.width = Math.round(r.width*dpr); this.c.height = Math.round(r.height*dpr);
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    this.ctx.fillStyle = '#fff'; this.ctx.fillRect(0,0,r.width,r.height);
+    this.ctx.strokeStyle = '#0E1B2B'; this.ctx.fillStyle = '#0E1B2B';
+    this.ctx.lineWidth = 2.6; this.ctx.lineCap = 'round'; this.ctx.lineJoin = 'round';
+    if (anterior) { const im = new Image(); im.onload = ()=>{ const esc = r.width/larguraAnt; this.ctx.drawImage(im, 0, 0, larguraAnt*esc, r.height); this.ctx.fillStyle = '#0E1B2B'; }; im.src = anterior; }
+  }
+  limpar(){ this.pontos = 0; this.largura = 0; this._ajustar(); this.c.parentNode.classList.remove('com-traco'); if (this.aoMudar) this.aoMudar(); }
+  valida(){ return this.pontos >= 12; }
+  imagem(){
+    const max = 600, esc = Math.min(1, max/this.c.width);
+    const t = document.createElement('canvas'); t.width = Math.round(this.c.width*esc); t.height = Math.round(this.c.height*esc);
+    const x = t.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0,0,t.width,t.height); x.drawImage(this.c, 0, 0, t.width, t.height);
+    return t.toDataURL('image/png');
+  }
+}
+
+// O conteúdo que é "carimbado" pela assinatura. Qualquer mudança aqui muda o código.
+function conteudoCanonico(r){
+  const e = Repo.equipamento(r.equipamento_id), o = Repo.obra(r.obra_id);
+  const grade = {}; HORAS.forEach(k=>{ const g = r.grade[k]; if (g && g.evento) grade[k] = [g.evento, g.atividade||'', g.local||'']; });
+  return JSON.stringify({
+    id:r.id, obra:[r.obra_id, o?.nome||''], equipamento:[r.equipamento_id, e?.descricao||'', idEquip(e)], data:r.data,
+    operador:[r.operador||'', r.matricula||''], medidor:[r.horimetro_inicial, r.horimetro_final, unidMedidor(e)], grade,
+    manutencoes:r.manutencoes.map(m=>[m.descricao, m.hora_inicio, m.hora_fim, m.horimetro_km]),
+    abastecimentos:r.abastecimentos.map(a=>[a.hora, a.combustivel, a.litros, a.horimetro_km]),
+    ajustes:r.ajustes.map(a=>[a.tipo, a.descricao, a.valor]), observacao:r.ocorrencia_geral||'',
+  });
+}
+async function sha256(txt){
+  if (window.crypto && crypto.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  throw new Error('sem_crypto');
+}
+function codigoCurto(hash){ return hash.slice(0,12).toUpperCase().match(/.{4}/g).join('-'); }
+function pegarLocalizacao(){
+  return new Promise(ok=>{
+    if (!navigator.geolocation) return ok({ erro:'indisponível no aparelho' });
+    navigator.geolocation.getCurrentPosition(
+      p=>ok({ lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6), precisao_m:Math.round(p.coords.accuracy) }),
+      e=>ok({ erro: e.code===1 ? 'não autorizada' : 'não obtida' }),
+      { enableHighAccuracy:true, timeout:12000, maximumAge:120000 });
+  });
+}
+
+function passoAssinar(){
+  const e = Repo.equipamento(rdo.equipamento_id), r = resumoGrade(rdo.grade), un = unidMedidor(e);
+  const paradas = Object.entries(r.porEvento).filter(([n])=>n!=='Em Atividade');
+  const ap = Prefs.get().apontador || {};
+  const delta = rdo.horimetro_inicial!=null && rdo.horimetro_final!=null ? rdo.horimetro_final - rdo.horimetro_inicial : null;
+  return `<div class="passo-titulo">Assinaturas</div>
+    <div class="passo-desc">Mostre o resumo ao operador antes de ele assinar.</div>
+    <div class="conferir">
+      <b>${esc(nomeEquip(e))}</b> ${esc(idEquip(e))}<br/>${esc(fmtDataCompleta(rdo.data))}
+      <ul>
+        <li><span>Em atividade</span><span>${r.ativ}h</span></li>
+        ${paradas.map(([n,h])=>`<li><span>${esc(n)}</span><span>${h}h</span></li>`).join('')}
+        <li><span>${rotuloMedidor(e)}</span><span>${fmtNum(rdo.horimetro_inicial)} a ${fmtNum(rdo.horimetro_final)} ${un}${delta!=null?' ('+fmtNum(delta)+' '+un+')':''}</span></li>
+        ${rdo.ajustes.map(a=>`<li><span>${a.tipo==='acrescimo'?'Acréscimo':'Desconto'}: ${esc(a.descricao)}</span><span>${fmtR$(a.valor)}</span></li>`).join('')}
+      </ul>
+    </div>
+
+    <div class="assin-bloco" id="bloco-op">
+      <div class="assin-titulo">Operador da máquina</div>
+      <div class="assin-sub">Confirma as horas e o ${rotuloMedidor(e).toLowerCase()} acima.</div>
+      <div class="assina-box">
+        <div class="linha2">
+          <div class="campo" style="flex:2"><span class="rotulo">Nome *</span><input type="text" id="as-op-nome" value="${esc(rdo.operador)}" autocapitalize="words"/></div>
+          <div class="campo"><span class="rotulo">CPF ou matrícula *</span><input type="text" id="as-op-doc" inputmode="numeric" value="${esc(rdo.matricula)}"/></div>
+        </div>
+        <div class="pad-wrap"><canvas id="pad-op" aria-label="Área de assinatura do operador"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
+          <button class="pad-limpar" onclick="pads.op.limpar()">Limpar</button></div>
+        <div class="declaracao">Declaro que as informações deste lançamento estão corretas.</div>
+        <button class="link-acao" onclick="alternarRecusa(true)">O operador não quis ou não pôde assinar</button>
+      </div>
+      <div class="recusa-box">
+        <div class="campo"><span class="rotulo">Por que não assinou? *</span><textarea id="as-recusa" placeholder="Ex: discordou das horas de chuva; operador já tinha ido embora"></textarea></div>
+        <button class="link-acao" onclick="alternarRecusa(false)">Voltar e colher a assinatura do operador</button>
+      </div>
+    </div>
+
+    <div class="assin-bloco">
+      <div class="assin-titulo">Apontador</div>
+      <div class="assin-sub">${esc(ap.nome||'—')}${ap.matricula?', matrícula '+esc(ap.matricula):''}</div>
+      <div class="pad-wrap"><canvas id="pad-ap" aria-label="Área de assinatura do apontador"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
+        <button class="pad-limpar" onclick="pads.ap.limpar()">Limpar</button></div>
+      <div class="declaracao">Declaro que acompanhei e registrei este lançamento.</div>
+    </div>
+
+    <div class="nota-trilha">Ao assinar, o app registra data e hora, localização, o aparelho usado e um código do conteúdo. Se o lançamento for corrigido depois, as assinaturas são anuladas e precisam ser colhidas de novo.</div>
+    <div class="erro-msg" id="as-erro" style="margin-top:12px"></div>
+    <div class="barra-acao"><button class="btn" id="btn-assinar" onclick="assinarEConcluir()">Assinar e concluir</button></div>`;
+}
+function ligarAssinatura(){
+  pads.op = new PadAssinatura(document.getElementById('pad-op'));
+  pads.ap = new PadAssinatura(document.getElementById('pad-ap'));
+}
+function alternarRecusa(sim){ document.getElementById('bloco-op').classList.toggle('recusou', sim); }
+
+async function assinarEConcluir(){
+  const erro = document.getElementById('as-erro'), btn = document.getElementById('btn-assinar');
+  erro.textContent = '';
+  if (verificacoes().some(a=>a.bloqueia)) { erro.textContent = 'Há pendências na revisão que impedem concluir.'; return; }
+  const recusou = document.getElementById('bloco-op').classList.contains('recusou');
+  const opNome = document.getElementById('as-op-nome').value.trim(), opDoc = document.getElementById('as-op-doc').value.trim();
+  const motivo = document.getElementById('as-recusa').value.trim();
+  if (recusou && motivo.length<5) { erro.textContent = 'Explique por que o operador não assinou.'; return; }
+  if (!recusou && (opNome.length<3 || !opDoc)) { erro.textContent = 'Informe o nome e o CPF ou matrícula do operador.'; return; }
+  if (!recusou && !pads.op.valida()) { erro.textContent = 'Falta a assinatura do operador.'; return; }
+  if (!pads.ap.valida()) { erro.textContent = 'Falta a assinatura do apontador.'; return; }
+
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Registrando localização';
+  try {
+    if (!recusou) { rdo.operador = opNome; if (!rdo.matricula) rdo.matricula = opDoc; }
+    const gps = await pegarLocalizacao();
+    btn.innerHTML = '<span class="spinner"></span>Assinando';
+    const hash = await sha256(conteudoCanonico(rdo));
+    const ap = Prefs.get().apontador || {};
+    rdo.assinaturas = {
+      em: new Date().toISOString(),
+      fuso: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      hash, codigo: codigoCurto(hash),
+      gps,
+      aparelho: { id:idAparelho(), descricao:descricaoAparelho(), navegador:navigator.userAgent, versao_app:CONFIG.VERSAO_APP },
+      operador: recusou ? null : { nome:opNome, documento:opDoc, imagem:pads.op.imagem() },
+      recusa_operador: recusou ? { motivo } : null,
+      apontador: { nome:ap.nome||'', matricula:ap.matricula||'', imagem:pads.ap.imagem() },
+    };
+    rdo._sync = 'pendente'; rdo.exportado_em = null;
+    await Repo.salvar(rdo);
+  } catch (e) {
+    rdo.assinaturas = null; btn.disabled = false; btn.textContent = 'Assinar e concluir';
+    erro.textContent = e.message==='sem_crypto' ? 'Este navegador não consegue gerar o código de conferência. Abra o app pelo endereço https.' : 'Não foi possível gravar. Tente de novo.';
+    return;
+  }
+  rdo = null; pads = {}; filtroHome = 'todos';
+  mostrarTela('tela-home'); renderHome();
+  toast('Lançamento assinado e concluído', 'sucesso');
+  tentarEnviar(true);
+}
+
+function comprovanteHtml(){
+  const a = rdo.assinaturas;
+  const trava = travado(rdo);
+  let h = (trava ? `<div class="banner-trava"><b>🔒 Este dia já entrou numa medição</b>Não dá mais pra corrigir pelo app. Se precisar, fale com o escritório.</div>` : '') +
+    resumoEquipHtml() + numerosDia() + reguaMini(rdo.grade) + '<div style="height:14px"></div>';
+  if (a) {
+    const gps = a.gps && a.gps.lat!=null
+      ? `<a href="https://maps.google.com/?q=${a.gps.lat},${a.gps.lng}" target="_blank" rel="noopener">${a.gps.lat}, ${a.gps.lng}</a> (precisão de ${a.gps.precisao_m} m)`
+      : 'não registrada ('+esc(a.gps?.erro||'—')+')';
+    h += `<div class="comprovante">
+      <div class="comprovante-cab"><span>✍️</span><b>Assinado</b></div>
+      ${a.operador ? `<div class="assinante"><div class="assinante-nome">${esc(a.operador.nome)} <small>operador, ${esc(a.operador.documento)}</small></div>
+        <div class="assin-img"><img src="${a.operador.imagem}" alt="Assinatura de ${esc(a.operador.nome)}"/></div></div>`
+        : `<div class="assinante"><div class="assinante-nome">Operador não assinou</div><div class="card-sub">${esc(a.recusa_operador?.motivo||'')}</div></div>`}
+      <div class="assinante"><div class="assinante-nome">${esc(a.apontador.nome)} <small>apontador${a.apontador.matricula?', '+esc(a.apontador.matricula):''}</small></div>
+        <div class="assin-img"><img src="${a.apontador.imagem}" alt="Assinatura de ${esc(a.apontador.nome)}"/></div></div>
+      <div class="trilha">
+        Em ${esc(fmtHoraCompleta(a.em))}<br/>
+        Local: ${gps}<br/>
+        Aparelho: ${esc(a.aparelho?.descricao||'—')}<br/>
+        Código de conferência: <span class="codigo">${esc(a.codigo)}</span><br/>
+        <span class="integridade" id="integridade"><span class="spinner"></span>Conferindo</span>
+      </div></div>`;
+  }
+  h += detalhesDia();
+  if ((rdo.assinaturas_anuladas||[]).length) h += `<div class="dica" style="font-size:12px;color:var(--text3);text-align:center;margin-top:4px">Este lançamento já foi corrigido ${rdo.assinaturas_anuladas.length}x. As assinaturas anteriores ficam guardadas no histórico.</div>`;
+  h += `<div class="barra-acao">${trava ? `<button class="btn btn-secundario" onclick="sairDoRdo()">Voltar à lista</button>`
+    : `<div class="btn-linha"><button class="btn btn-secundario" onclick="corrigirAssinado()">Corrigir</button><button class="btn" onclick="sairDoRdo()">Voltar à lista</button></div>`}</div>`;
+  return h;
+}
+async function conferirIntegridade(){
+  const el = document.getElementById('integridade'); if (!el || !rdo.assinaturas) return;
+  try {
+    const h = await sha256(conteudoCanonico(rdo));
+    if (h===rdo.assinaturas.hash) { el.className='integridade ok'; el.textContent='✓ O conteúdo confere com o que foi assinado'; }
+    else { el.className='integridade erro'; el.textContent='⚠ O conteúdo foi alterado depois da assinatura'; }
+  } catch (e) { el.textContent=''; }
+}
+async function corrigirAssinado(){
+  const msg = rdo._sync==='enviado' || rdo.exportado_em
+    ? 'Este lançamento já saiu do celular. Corrigir anula as assinaturas e ele vai precisar ser assinado e enviado de novo. Continuar?'
+    : 'Corrigir anula as assinaturas, que vão precisar ser colhidas de novo. Continuar?';
+  if (!confirm(msg)) return;
+  rdo.assinaturas_anuladas = rdo.assinaturas_anuladas || [];
+  rdo.assinaturas_anuladas.push(Object.assign({}, rdo.assinaturas, { anulada_em:new Date().toISOString(), anulada_por:(Prefs.get().apontador||{}).nome||'' }));
+  rdo.assinaturas = null; rdo._sync = 'rascunho';
+  await Repo.salvar(rdo);
+  passoMax = 4; irPasso(2);
+  toast('Assinaturas anuladas. Corrija e assine de novo.');
+}
+
+/* ===================================================================== */
+/* INSTALAÇÃO E ATUALIZAÇÃO (PWA)                                        */
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); promptInstalar = e; if (telaAtiva()==='tela-home') renderHome(); });
+window.addEventListener('appinstalled', ()=>{ promptInstalar = null; toast('App instalado', 'sucesso'); if (telaAtiva()==='tela-home') renderHome(); });
+async function instalarApp(){ if (!promptInstalar) return; promptInstalar.prompt(); await promptInstalar.userChoice; promptInstalar = null; renderHome(); }
+function atualizarApp(){ if (swEsperando) swEsperando.postMessage('pular'); }
+if ('serviceWorker' in navigator && (location.protocol==='https:' || location.hostname==='localhost')) {
+  navigator.serviceWorker.register('sw.js').then(reg=>{
+    const vigiar = w=>w.addEventListener('statechange', ()=>{ if (w.state==='installed' && navigator.serviceWorker.controller) { swEsperando = w; if (telaAtiva()==='tela-home') renderHome(); } });
+    if (reg.waiting && navigator.serviceWorker.controller) swEsperando = reg.waiting;
+    if (reg.installing) vigiar(reg.installing);
+    reg.addEventListener('updatefound', ()=>vigiar(reg.installing));
+  }).catch(()=>{});
+  let recarregou = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{ if (recarregou) return; recarregou = true; location.reload(); });
+}
+
+iniciar();
+</script>
+</body>
+</html>
