@@ -497,6 +497,12 @@
   #impressao .sig-img .sig-selfie{flex:0 0 16mm;width:16mm;height:16mm;object-fit:cover;border-radius:2mm;}
   .selfie-foto video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
   .selfie-foto.ao-vivo{width:150px;height:150px;border-style:solid;border-color:var(--orange);}
+  .banner-leitura{background:var(--navy3);border:1px solid var(--border2);border-radius:12px;padding:9px 12px;font-size:12.5px;color:var(--text2);margin-bottom:12px;font-weight:600;}
+  .banner-leitura:empty{display:none;}
+  #rdo-corpo.leitura .trecho{pointer-events:none;}
+  #rdo-corpo.leitura .hora{cursor:default;}
+  .dica-ver{font-size:12.5px;color:var(--text3);text-align:center;margin:14px 0 0;}
+  .acoes .btn{padding-left:10px;padding-right:10px;}
 
 </style>
 </head>
@@ -600,7 +606,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.5.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.6.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -1479,6 +1485,7 @@ function abrirRdo(id){
   secoesAbertas = {}; selecao = new Set();
   passoMax = 4;
   passoAtual = editavel(rdo) ? (rdo.equipamento_id ? 2 : 0) : 4;
+  window._modoAssin = null;
   mostrarTela('tela-rdo'); renderRdo();
 }
 let _autoT;
@@ -1493,6 +1500,7 @@ function irPasso(n){
 }
 function voltarPasso(){
   if (passoAtual>0 && editavel(rdo)) irPasso(passoAtual-1);
+  else if (!editavel(rdo) && passoAtual!==4) irPasso(4);
   else sairDoRdo();
 }
 function sairDoRdo(){
@@ -1555,21 +1563,52 @@ async function recarregarDoSistema(){
   renderHome(); toast('Lançamentos recarregados do sistema', 'sucesso');
 }
 
+// Lançamento que a pessoa não pode editar: abre no resumo (passo Revisão) e
+// Dia, Horas e Extras podem ser vistos só pra leitura.
+const PASSOS_LEITURA = [1,2,3,4];
 function renderRdo(){
   const e = Repo.equipamento(rdo.equipamento_id);
   document.getElementById('rdo-titulo').textContent = e ? (idEquip(e) || e.descricao) : 'Novo lançamento';
   document.getElementById('rdo-sub').textContent = e ? juntar(fmtData(rdo.data, true), e.descricao) : (ehApontador() ? Repo.obra(rdo.obra_id)?.nome||'' : sessao.nome);
   const pode = editavel(rdo);
+  if (!pode && !PASSOS_LEITURA.includes(passoAtual)) passoAtual = 4;
   document.getElementById('passos-rdo').innerHTML = PASSOS.map((p,i)=>{
     const cls = i===passoAtual ? 'atual' : ((!pode || i<=passoMax) ? 'feito' : '');
-    const clic = pode && i<=passoMax && rdo.equipamento_id && i!==passoAtual && i<5;
+    const clic = i!==passoAtual && (pode ? (i<=passoMax && rdo.equipamento_id && i<5) : PASSOS_LEITURA.includes(i));
     return `<button class="passo ${cls} ${clic?'clicavel':''}" ${clic?`onclick="irPasso(${i})"`:'tabindex="-1"'} aria-label="${p}"><span class="bola">${cls==='feito'?'✓':i+1}</span>${p}</button>`;
   }).join('');
   const corpo = document.getElementById('rdo-corpo');
-  corpo.innerHTML = pode ? [passoMaquina, passoDia, passoHoras, passoOcorrencias, passoRevisao, passoAssinar][passoAtual]() : painelLancamento();
-  if (pode && passoAtual===2) ligarRegua();
-  if (!pode) conferirIntegridade();
+  corpo.classList.toggle('leitura', !pode && passoAtual!==4);
+  if (pode) {
+    corpo.innerHTML = [passoMaquina, passoDia, passoHoras, passoOcorrencias, passoRevisao, passoAssinar][passoAtual]();
+    if (passoAtual===2) ligarRegua();
+  } else if (passoAtual===4) {
+    corpo.innerHTML = painelLancamento(); conferirIntegridade();
+  } else {
+    if (passoAtual===3) ['ab','ma','aj'].forEach(k=>secoesAbertas[k] = true);
+    corpo.innerHTML = [passoMaquina, passoDia, passoHoras, passoOcorrencias][passoAtual]();
+    somenteLeitura(corpo);
+    if (passoAtual===2) atualizarResumoHoras();
+  }
 }
+function somenteLeitura(corpo){
+  corpo.querySelectorAll('input,select,textarea').forEach(el=>el.disabled = true);
+  corpo.querySelectorAll('.atalhos,#barra-sel,.barra-acao,.btn-add-linha,.btn-remover,.toggle,.banner-duplicado,.ajuda,.passo-desc').forEach(el=>el.remove());
+  // nos Extras, esconde os formulários de adicionar e deixa só o que foi lançado
+  corpo.querySelectorAll('.secao-opcional-corpo').forEach(sc=>{
+    [...sc.children].forEach(ch=>{ if (!ch.classList.contains('item-lista')) ch.remove(); });
+    if (!sc.querySelector('.item')) sc.innerHTML = '<div class="ajuda" style="margin:12px 0 0">Nada lançado.</div>';
+  });
+  const aviso = document.createElement('div');
+  aviso.className = 'banner-leitura';
+  aviso.textContent = editavel(rdo) ? '' : 'Só leitura.' + (podeEditarComoApontador(rdo) ? ' Pra alterar, use Editar no resumo.' : '');
+  corpo.prepend(aviso);
+  const barra = document.createElement('div');
+  barra.className = 'barra-acao';
+  barra.innerHTML = `<div class="btn-linha">${passoAtual<3?`<button class="btn btn-secundario" onclick="irPasso(${passoAtual+1})">Próximo</button>`:''}<button class="btn" onclick="irPasso(4)">Voltar ao resumo</button></div>`;
+  corpo.appendChild(barra);
+}
+
 function resumoEquipHtml(){
   const e = Repo.equipamento(rdo.equipamento_id); if (!e) return '';
   return `<div class="resumo-equip">${iconeEquip(e)}<div style="flex:1;min-width:0">
@@ -1618,7 +1657,8 @@ function sugerirMedidor(){
   if (ult && rdo.horimetro_inicial==null) rdo.horimetro_inicial = ult.valor;
 }
 function escolherOperadorVinculado(uid, silencioso){
-  const e = Repo.equipamento(rdo.equipamento_id); const o = e?.operadores.find(x=>x.id===uid); if (!o) return;
+  const e = Repo.equipamento(rdo.equipamento_id); const o = e?.operadores.find(x=>x.id===uid);
+  if (!o) { if (uid===rdo.operador_usuario_id && !silencioso) { autosalvar(); renderRdo(); } return; }
   rdo.operador = o.nome; rdo.matricula = o.matricula || rdo.matricula; rdo.operador_usuario_id = o.id;
   if (!silencioso) { autosalvar(); renderRdo(); }
 }
@@ -1931,11 +1971,12 @@ function passoAssinar(){
     <div class="nota-trilha">Ao assinar, o app registra data e hora, localização, o aparelho e um código do conteúdo. Se algo for corrigido depois, a assinatura é anulada.</div>
     <div class="erro-msg" id="as-erro" style="margin-top:12px"></div>
     <div class="barra-acao"><button class="btn" onclick="assinarComoOperador()">Assinar e enviar ao apontador</button></div>`;
-  const ops = e?.operadores || [];
+  const ops = [...(e?.operadores || [])];
+  if (rdo.operador_usuario_id && !ops.some(o=>o.id===rdo.operador_usuario_id)) ops.push({ id:rdo.operador_usuario_id, nome:rdo.operador||'Operador', matricula:rdo.matricula||'' });
   const opSel = ops.find(o=>o.id===rdo.operador_usuario_id);
   const modo = window._modoAssin || (opSel ? 'app' : 'sem');
   return `<div class="passo-titulo">Assinatura</div>
-    <div class="passo-desc">Você assina como apontador. Escolha como fica a assinatura do operador.</div>${resumo}
+    <div class="passo-desc">Você assina como apontador. ${opSel ? `Depois, <b>${esc(opSel.nome)}</b> recebe no app pra confirmar ou contestar.` : 'Escolha como fica a assinatura do operador.'}</div>${resumo}
     <div class="assin-bloco">
       <div class="assin-titulo">Assinatura do operador</div>
       <div class="opcao-lista" style="margin-top:10px">
@@ -2254,17 +2295,38 @@ function painelLancamento(){
     (!op && r.fluxo==='pronto' && (r.conflito||r.erro_envio)) || (r.bloqueado_envio && r.responsavel_id===eu));
   if (!op && r.fluxo==='aguardando_apontador' && !travado(r)) {
     botoes.push(`<button class="btn btn-secundario" onclick="devolver()">Devolver</button>`);
-    botoes.push(`<button class="btn" onclick="validar()">Assinar e enviar</button>`);
+    botoes.push(`<button class="btn btn-secundario" onclick="editarComoApontador()">Editar</button>`);
+    botoes.push(`<button class="btn" onclick="validar()">Assinar</button>`);
   } else if (op && r.fluxo==='aguardando_operador' && r.operador_usuario_id===eu && !travado(r)) {
     botoes.push(`<button class="btn btn-secundario" onclick="contestar()">Contestar</button>`);
     botoes.push(`<button class="btn" onclick="confirmar()">Confirmar e assinar</button>`);
   } else if (podeCorrigir) {
     botoes.push(`<button class="btn btn-secundario" onclick="corrigir()">Corrigir</button>`);
   }
-  if (r.fluxo!=='rascunho') botoes.push(`<button class="btn ${botoes.length?'btn-secundario':''}" onclick="imprimirFicha(rdo)" aria-label="Imprimir ficha">🖨️${botoes.length?'':' Imprimir ficha'}</button>`);
+  if (r.fluxo!=='rascunho' && botoes.length<3) botoes.push(`<button class="btn ${botoes.length?'btn-secundario':''}" onclick="imprimirFicha(rdo)" aria-label="Imprimir ficha">🖨️${botoes.length?'':' Imprimir ficha'}</button>`);
+  const dicaVer = `<div class="dica-ver">Toque em <b>Dia</b>, <b>Horas</b> ou <b>Extras</b> lá em cima pra ver os detalhes.</div>`;
   return banner + resumoEquipHtml() + numerosDia() + reguaMini(r.grade) + '<div style="height:14px"></div>' + assin + detalhesDia() +
     ((r.historico||[]).length ? `<div class="secao-titulo">Histórico</div><dl class="lista-def">${r.historico.map(h=>`<div><dt>${esc(fmtHoraCompleta(h.em))}</dt><dd style="font-weight:500">${esc(h.por)}: ${esc(h.acao)}${h.motivo?' ("'+esc(h.motivo)+'")':''}</dd></div>`).join('')}</dl>` : '') +
-    `<div class="barra-acao"><div class="btn-linha acoes">${botoes.join('')}</div></div>`;
+    dicaVer + `<div class="barra-acao"><div class="btn-linha acoes">${botoes.join('')}</div></div>`;
+}
+function podeEditarComoApontador(r){ return ehApontador() && r && r.fluxo==='aguardando_apontador' && !travado(r); }
+// O apontador ajeita o que o operador mandou: a assinatura do operador é anulada
+// e, depois que o apontador assinar, volta pro operador confirmar ou contestar.
+async function editarComoApontador(){
+  if (!podeEditarComoApontador(rdo)) return;
+  try {
+    const atual = await buscarAtual();
+    if (!atual || atual.status!=='aguardando_apontador') { toast('Este lançamento mudou no sistema. Atualizando.', 'erro'); await Sinc.rodar(true); return; }
+  } catch (e) { toast(e.message, 'erro'); return; }
+  const quem = rdo.assinaturas?.operador?.nome || rdo.operador || 'o operador';
+  if (!confirm(`Editar o lançamento de ${quem}?\n\nA assinatura dele será anulada. Depois que você assinar, o lançamento volta pra ${quem} confirmar ou contestar no app.`)) return;
+  if (rdo.assinaturas) { rdo.assinaturas_anuladas = rdo.assinaturas_anuladas || []; rdo.assinaturas_anuladas.push(Object.assign({}, rdo.assinaturas, { anulada_em:new Date().toISOString(), anulada_por:sessao.nome, motivo:'apontador editou' })); }
+  rdo.assinaturas = null; rdo.fluxo = 'rascunho'; rdo.responsavel_id = sessao.id; rdo.conflito = false; rdo.bloqueado_envio = false; rdo.erro_envio = null;
+  window._modoAssin = rdo.operador_usuario_id ? 'app' : null;
+  registrar(rdo, 'apontador editou o lançamento do operador');
+  await Repo.salvar(rdo); Sinc.rodar(true);
+  passoMax = 4; irPasso(2);
+  toast('Edite e assine. Depois volta pro operador confirmar.');
 }
 async function mostrarSelfies(){
   for (const el of document.querySelectorAll('.selfie-foto[data-selfie]')) {
