@@ -503,6 +503,15 @@
   #rdo-corpo.leitura .hora{cursor:default;}
   .dica-ver{font-size:12.5px;color:var(--text3);text-align:center;margin:14px 0 0;}
   .acoes .btn{padding-left:10px;padding-right:10px;}
+  #impressao .hdr-foto{width:30mm;border-left:1px solid #ccc;display:flex;align-items:center;justify-content:center;padding:1.5mm;background:#fff;}
+  #impressao .hdr-foto img{max-width:100%;max-height:24mm;object-fit:contain;display:block;}
+  #impressao .page + .page{page-break-before:always;break-before:page;}
+  #impressao .tg.resumo td,#impressao .tg.resumo th{font-size:9px;padding:3px 4px;}
+  #impressao .tg tfoot td{background:#eee;border-top:1.5px solid #999;font-size:9.5px;}
+  #impressao .tg .c{text-align:center;}
+  #impressao .termo{border:1px solid #ccc;border-top:none;padding:6px 8px;font-size:10.5px;line-height:1.55;}
+  #impressao .sig-termo{min-height:34mm;}
+  #impressao .sig-termo .sig-vazio{margin-top:7mm;border-top:none;border-bottom:1px solid #999;padding:0 0 1px;font-size:9px;color:#444;}
 
 </style>
 </head>
@@ -606,7 +615,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.7.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.8.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -1477,6 +1486,7 @@ function abrirTrocaObra(titulo){
 function abrirMenu(){
   const ops = [
     { valor:'atualizar', ic:'🔄', rotulo:'Atualizar dados do sistema', sub: online() ? 'Obras, máquinas, listas e lançamentos' : 'Precisa de internet' },
+    ...(ehApontador() ? [{ valor:'periodo', ic:'📑', rotulo:'Relatório do período', sub:'Vários dias de um equipamento, para o locador assinar' }] : []),
     { valor:'assinatura', ic:'✍️', rotulo:'Minha assinatura', sub:'Ver ou refazer a assinatura salva' },
     { valor:'recarregar', ic:'🧹', rotulo:'Recarregar lançamentos do sistema', sub:'Apaga as cópias do celular e baixa de novo' },
     { valor:'sobre', ic:'ℹ️', rotulo:'Sobre o app', sub:'Versão '+CONFIG.VERSAO_APP },
@@ -1491,6 +1501,7 @@ function abrirMenu(){
     if (v==='sair') sair();
     if (v==='recarregar') recarregarDoSistema();
     if (v==='assinatura') verMinhaAssinatura();
+    if (v==='periodo') abrirRelatorioPeriodo();
     if (v==='sobre') abrirModal('Sobre o app', `<dl class="lista-def">
       <div><dt>Versão</dt><dd>${CONFIG.VERSAO_APP}</dd></div>
       <div><dt>Usuário</dt><dd>${esc(sessao?.nome||'—')}</dd></div>
@@ -2452,8 +2463,22 @@ async function corrigir(){
 /* ===================================================================== */
 /* FICHA IMPRESSA (modelo do RDO do gestão de frota, preenchido)          */
 async function imprimirFicha(r){
+  const e = Repo.equipamento(r.equipamento_id);
+  await imprimirHtml(await htmlFicha(r), 'RDO ' + juntar(idEquip(e)||e?.descricao, fmtDataCurta(r.data)));
+}
+async function imprimirHtml(html, titulo){
+  const el = document.getElementById('impressao'); el.innerHTML = html;
+  document.title = titulo;
+  // espera as imagens carregarem antes de abrir a impressão
+  await Promise.all([...el.querySelectorAll('img')].map(im=>im.complete ? 0 : new Promise(ok=>{ im.onload = im.onerror = ok; setTimeout(ok, 5000); })));
+  setTimeout(()=>{ window.print(); document.title = 'Produtividade da Frota'; }, 60);
+}
+// opts.ajustesTodos: lista pronta (relatório do período); opts.periodo: assinatura do locador fica no termo do período
+async function htmlFicha(r, opts){
+  opts = opts || {};
   const a0 = r.assinaturas || {};
-  const ajEsc = await ajustesDoEscritorio(r).catch(()=>[]);
+  const ajEsc = opts.ajustesTodos ? [] : await ajustesDoEscritorio(r).catch(()=>[]);
+  const ajLista = opts.ajustesTodos ? opts.ajustesTodos.map(x=>({...x, origem:''})) : [...r.ajustes.map(x=>({...x, origem:'Campo'})), ...ajEsc.map(x=>({...x, origem:'Escritório'}))];
   const fotos = { operador: await urlDaSelfie(a0.operador?.selfie).catch(()=>null), apontador: await urlDaSelfie(a0.apontador?.selfie).catch(()=>null) };
   const e = Repo.equipamento(r.equipamento_id), o = Repo.obra(r.obra_id), g = resumoGrade(r.grade), un = unidMedidor(e);
   const a = r.assinaturas || {};
@@ -2470,6 +2495,7 @@ async function imprimirFicha(r){
   const html = `<div class="page">
     <div class="hdr"><div class="hdr-logo">REGISTRO<br>DIÁRIO DE<br>OPERAÇÃO</div>
       <div class="hdr-main"><div class="title">RDO — RELATÓRIO DIÁRIO DE OPERAÇÃO DE EQUIPAMENTO</div><div class="sub">${esc(o?.nome||'')}</div></div>
+      ${e?.foto ? `<div class="hdr-foto"><img src="${esc(e.foto)}" alt=""/></div>` : ''}
       <div class="hdr-right"><div><span class="lbl">Data</span>${P(fmtDataCurta(r.data))}</div><div><span class="lbl">Documento Nº</span>${P((a.apontador||a.operador)?.codigo || r.id.slice(0,8).toUpperCase())}</div></div></div>
     <div class="sec">1. Identificação do equipamento e operador</div>
     <div class="idb">
@@ -2490,20 +2516,124 @@ async function imprimirFicha(r){
       <div class="rodc"><div class="sec" style="margin-top:0">3. Abastecimento</div>
         ${r.abastecimentos.length ? `<table class="tg"><thead><tr><th>Hora</th><th>${rotuloMedidor(e)}</th><th>Litros</th><th>Combustível</th></tr></thead><tbody>${r.abastecimentos.map(x=>`<tr><td>${esc(x.hora||'—')}</td><td>${fmtNum(x.horimetro_km)}</td><td>${fmtNum(x.litros)}</td><td>${esc(x.combustivel||'')}</td></tr>`).join('')}</tbody></table>` : '<div class="nada">Nenhum</div>'}</div>
     </div>
-    ${r.ajustes.length || ajEsc.length ? `<div class="sec">4. Acréscimos e descontos</div><table class="tg"><thead><tr><th>Tipo</th><th>Descrição</th><th>Lançado por</th><th class="n">Valor</th></tr></thead><tbody>${r.ajustes.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td><td>Campo</td><td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}${ajEsc.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td><td>Escritório</td><td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${ajLista.length ? `<div class="sec">4. Acréscimos e descontos</div><table class="tg"><thead><tr><th>Tipo</th><th>Descrição</th>${opts.ajustesTodos?'':'<th>Lançado por</th>'}<th class="n">Valor</th></tr></thead><tbody>${ajLista.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td>${opts.ajustesTodos?'':`<td>${x.origem}</td>`}<td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
     <div class="sigs">
       ${sig('Operador / motorista', a.operador, a.recusa_operador ? 'Não assinou: '+a.recusa_operador.motivo : 'Aguardando assinatura', fotos.operador)}
       ${sig('Encarregado / fiscal de campo', a.apontador, 'Aguardando assinatura', fotos.apontador)}
-      ${sig('Responsável técnico', null, '')}
+      ${sig('Representante do locador', null, opts.periodo ? 'Assinatura no termo do período (1ª página)' : '')}
     </div>
     <div class="ft"><span>RDO digital — SIGECON Produtividade da Frota${r.frota_rdo_id!=null?' · registro '+esc(r.frota_rdo_id):''}</span><span>Assinado eletronicamente no app de campo · verificação pelo código de conferência</span></div>
   </div>`;
-  const el = document.getElementById('impressao'); el.innerHTML = html;
-  document.title = 'RDO ' + juntar(idEquip(e)||e?.descricao, fmtDataCurta(r.data));
-  // espera as imagens carregarem antes de abrir a impressão
-  await Promise.all([...el.querySelectorAll('img')].map(im=>im.complete ? 0 : new Promise(ok=>{ im.onload = im.onerror = ok; setTimeout(ok, 4000); })));
-  setTimeout(()=>{ window.print(); document.title = 'Produtividade da Frota'; }, 60);
+  return html;
 }
+
+/* ===================================================================== */
+/* RELATÓRIO DO PERÍODO (apontador)                                      */
+// Junta os dias de um equipamento num documento só: resumo com termo de
+// conferência (Representante do Locador assina por Autentique ou no papel)
+// e, se quiser, a ficha de cada dia em seguida.
+function abrirRelatorioPeriodo(){
+  if (!ehApontador()) return;
+  const equips = Repo.equipamentos(Prefs.get().obra);
+  const hoje = hojeISO(), ini = hoje.slice(0,8)+'01';
+  abrirModal('Relatório do período', `<div class="passo-desc">Junta os dias de um equipamento num documento para o representante do locador assinar (Autentique ou no papel).</div>
+    <div class="campo"><span class="rotulo">Equipamento *</span><select id="rp-equip">${equips.map(e=>`<option value="${e.id}">${esc(juntar(e.descricao, idEquip(e)))}</option>`).join('')}</select></div>
+    <div class="linha2"><div class="campo"><span class="rotulo">De *</span><input type="date" id="rp-ini" value="${ini}" max="${hoje}"/></div>
+      <div class="campo"><span class="rotulo">Até *</span><input type="date" id="rp-fim" value="${hoje}" max="${hoje}"/></div></div>
+    <label class="consentimento" style="margin-top:0"><input type="checkbox" id="rp-fichas" checked/><span>Incluir a ficha de cada dia depois do resumo</span></label>
+    <div class="erro-msg" id="rp-erro" style="margin-top:10px"></div>
+    <button class="btn" id="rp-btn" style="margin-top:12px" onclick="gerarRelatorioPeriodo()">Gerar relatório</button>
+    <div class="ajuda" style="margin-top:10px">Na tela de impressão, escolha "Salvar como PDF" para enviar ao Autentique. Precisa de internet.</div>`);
+}
+function registroDoSistema(row, ajustes){
+  const a = row.assinaturas || null;
+  return { id: a?.app_id || ('rdo-'+row.id), frota_rdo_id: row.id, obra_id: row.obra_id, equipamento_id: row.equipamento_id, data: row.data,
+    operador: row.operador||'', matricula: row.matricula||'', horimetro_inicial: row.horimetro_inicial, horimetro_final: row.horimetro_final,
+    ocorrencia_geral: row.ocorrencia_geral||'', grade: row.grade||{}, manutencoes: row.manutencoes||[], abastecimentos: row.abastecimentos||[],
+    ajustes: [], ajustesTodos: ajustes||[], assinaturas: a ? { operador:a.operador||null, apontador:a.apontador||null, recusa_operador:a.recusa_operador||null } : null,
+    status_medicao: row.status_medicao || 'nao_medido' };
+}
+async function gerarRelatorioPeriodo(){
+  const equipId = document.getElementById('rp-equip').value, ini = document.getElementById('rp-ini').value, fim = document.getElementById('rp-fim').value;
+  const comFichas = document.getElementById('rp-fichas').checked, erro = document.getElementById('rp-erro'), btn = document.getElementById('rp-btn');
+  erro.textContent = '';
+  if (!equipId || !ini || !fim) { erro.textContent = 'Escolha o equipamento e o período.'; return; }
+  if (fim < ini) { erro.textContent = 'A data final não pode ser antes da inicial.'; return; }
+  const dias = Math.round((new Date(fim+'T12:00:00') - new Date(ini+'T12:00:00'))/86400000) + 1;
+  if (dias > 62) { erro.textContent = 'Escolha um período de até 62 dias.'; return; }
+  if (!online()) { erro.textContent = 'Precisa de internet para buscar os dias no sistema.'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Buscando os dias';
+  try {
+    const { data:rows, error } = await sb.from('frota_rdo').select('*').eq('equipamento_id', equipId).gte('data', ini).lte('data', fim).order('data');
+    if (error) throw error;
+    if (!rows || !rows.length) { erro.textContent = 'Nenhum dia lançado nesse período para esse equipamento.'; return; }
+    const ids = rows.map(r=>r.id);
+    const { data:ajs, error:eAj } = await sb.from('frota_rdo_ajustes').select('id,frota_rdo_id,tipo,descricao,valor').in('frota_rdo_id', ids);
+    if (eAj) throw eAj;
+    const regs = rows.map(r=>registroDoSistema(r, (ajs||[]).filter(a=>String(a.frota_rdo_id)===String(r.id)))).sort((a,b)=>a.data.localeCompare(b.data));
+    btn.innerHTML = '<span class="spinner"></span>Montando o relatório';
+    let html = await htmlResumoPeriodo(regs, equipId, ini, fim, comFichas);
+    if (comFichas) for (const r of regs) html += await htmlFicha(r, { periodo:true, ajustesTodos:r.ajustesTodos });
+    fecharModal();
+    const e = Repo.equipamento(equipId);
+    await imprimirHtml(html, 'RDO período ' + juntar(idEquip(e)||e?.descricao, fmtDataCurta(ini)+' a '+fmtDataCurta(fim)));
+  } catch (e) { erro.textContent = 'Não foi possível gerar: '+traduzErro(e); }
+  finally { if (document.getElementById('rp-btn')) { btn.disabled = false; btn.textContent = 'Gerar relatório'; } }
+}
+async function htmlResumoPeriodo(regs, equipId, ini, fim, comFichas){
+  const e = Repo.equipamento(equipId), o = Repo.obra(e?.obra_id || regs[0]?.obra_id), un = unidMedidor(e);
+  const linhas = regs.map(r=>{
+    const g = resumoGrade(r.grade);
+    const delta = r.horimetro_inicial!=null && r.horimetro_final!=null ? r.horimetro_final - r.horimetro_inicial : null;
+    const acr = r.ajustesTodos.filter(a=>a.tipo==='acrescimo').reduce((s,a)=>s+Number(a.valor||0),0);
+    const des = r.ajustesTodos.filter(a=>a.tipo==='desconto').reduce((s,a)=>s+Number(a.valor||0),0);
+    const a = r.assinaturas || {};
+    return { r, g, delta, acr, des, op: a.operador ? '✓' : (a.recusa_operador ? 'Recusou' : '—'), ap: a.apontador ? '✓' : '—' };
+  });
+  const tot = { ativ:0, apont:0, delta:0, acr:0, des:0, ev:{} };
+  linhas.forEach(l=>{ tot.ativ += l.g.ativ; tot.apont += l.g.apontadas; if (l.delta!=null) tot.delta += l.delta; tot.acr += l.acr; tot.des += l.des;
+    Object.entries(l.g.porEvento).forEach(([n,h])=>{ tot.ev[n] = (tot.ev[n]||0)+h; }); });
+  // dias do período sem lançamento
+  const lancados = new Set(regs.map(r=>r.data)), faltam = [];
+  for (let d = new Date(ini+'T12:00:00'); d <= new Date(fim+'T12:00:00'); d.setDate(d.getDate()+1)) {
+    const iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if (!lancados.has(iso)) faltam.push(iso.slice(8)+'/'+iso.slice(5,7));
+  }
+  const hash = await sha256(JSON.stringify(regs.map(r=>[r.frota_rdo_id, r.data, resumoGrade(r.grade).ativ, r.horimetro_inicial, r.horimetro_final, r.assinaturas?.operador?.codigo||'', r.assinaturas?.apontador?.codigo||''])));
+  const codigo = codigoCurto(hash);
+  const P = (v)=>`<div class="pr">${esc(v==null||v===''?'—':v)}</div>`;
+  const semana = d=>new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','');
+  const parada = g=>Object.entries(g.porEvento).filter(([n])=>n!=='Em Atividade').map(([n,h])=>`${n} ${h}h`).join(', ') || '—';
+  return `<div class="page">
+    <div class="hdr"><div class="hdr-logo">RELATÓRIO<br>DE OPERAÇÃO<br>DO PERÍODO</div>
+      <div class="hdr-main"><div class="title">RDO — RELATÓRIO DE OPERAÇÃO DO PERÍODO</div><div class="sub">${esc(o?.nome||'')}</div></div>
+      ${e?.foto ? `<div class="hdr-foto"><img src="${esc(e.foto)}" alt=""/></div>` : ''}
+      <div class="hdr-right"><div><span class="lbl">Período</span>${P(fmtDataCurta(ini)+' a '+fmtDataCurta(fim))}</div><div><span class="lbl">Documento Nº</span>${P(codigo)}</div></div></div>
+    <div class="sec">1. Equipamento</div>
+    <div class="idb"><div class="idr">
+      <div class="idc" style="flex:2.2"><span class="lbl">Tipo e modelo do equipamento</span>${P(e?.descricao)}</div>
+      <div class="idc"><span class="lbl">Código / Placa</span>${P(idEquip(e))}</div>
+      <div class="idc" style="flex:2"><span class="lbl">Locador (fornecedor)</span>${P(e ? Repo.fornecedor(e.fornecedor_id).razao_social : '')}</div>
+      <div class="idc"><span class="lbl">Dias lançados</span>${P(regs.length+' de '+(regs.length+faltam.length))}</div></div></div>
+    <div class="sec">2. Dias do período</div>
+    <table class="tg resumo"><thead><tr><th>Dia</th><th>Operador</th><th class="n">${rotuloMedidor(e)}</th><th class="n">${ehKm(e)?'Km':'Horas hor.'}</th><th class="n">Em ativ.</th><th>Fora de atividade</th><th class="n">Acrésc.</th><th class="n">Desc.</th><th class="c">Oper.</th><th class="c">Apont.</th></tr></thead>
+    <tbody>${linhas.map(l=>`<tr><td style="white-space:nowrap">${fmtDataCurta(l.r.data).slice(0,5)} ${semana(l.r.data)}</td><td>${esc(l.r.operador||'—')}</td>
+      <td class="n" style="white-space:nowrap">${fmtNum(l.r.horimetro_inicial)} → ${fmtNum(l.r.horimetro_final)}</td><td class="n">${l.delta!=null?fmtNum(l.delta):'—'}</td>
+      <td class="n"><b>${l.g.ativ}h</b></td><td>${esc(parada(l.g))}</td><td class="n">${l.acr?fmtR$(l.acr):'—'}</td><td class="n">${l.des?fmtR$(l.des):'—'}</td>
+      <td class="c">${l.op}</td><td class="c">${l.ap}</td></tr>`).join('')}</tbody>
+    <tfoot><tr><td colspan="3"><b>Totais</b></td><td class="n"><b>${fmtNum(tot.delta)}</b></td><td class="n"><b>${tot.ativ}h</b></td><td>${tot.apont-tot.ativ}h fora de atividade</td><td class="n"><b>${fmtR$(tot.acr)}</b></td><td class="n"><b>${fmtR$(tot.des)}</b></td><td colspan="2"></td></tr></tfoot></table>
+    <div class="tl-leg" style="margin-top:4px">${Object.entries(tot.ev).sort((a,b)=>b[1]-a[1]).map(([n,h])=>`<span><i style="background:${corEvento(n)}"></i>${esc(n)}: ${h}h</span>`).join('')}</div>
+    ${faltam.length ? `<div class="nada" style="padding:2px 2px 0">Dias sem lançamento no período: ${faltam.join(', ')}</div>` : ''}
+    <div class="sec">3. Termo de conferência</div>
+    <div class="termo">Declaramos que conferimos os registros de operação do equipamento acima no período de <b>${fmtDataCurta(ini)}</b> a <b>${fmtDataCurta(fim)}</b>, que somam <b>${tot.ativ} horas em atividade</b> e <b>${tot.apont-tot.ativ} horas fora de atividade</b> em ${regs.length} ${regs.length===1?'dia lançado':'dias lançados'}${comFichas?', conforme as fichas diárias anexas':''}.</div>
+    <div class="sigs">
+      <div class="sig sig-termo"><label>Representante do locador</label><div class="sig-vazio">Nome:</div><div class="sig-vazio">CPF:</div><div class="sig-vazio">Assinatura e data:</div></div>
+      <div class="sig sig-termo"><label>Encarregado / fiscal de campo</label><div class="sig-vazio">Nome: ${esc(sessao.nome||'')}</div><div class="sig-vazio">Matrícula: ${esc(sessao.matricula||'')}</div><div class="sig-vazio">Assinatura e data:</div></div>
+    </div>
+    <div class="ft"><span>Gerado em ${esc(fmtHoraCompleta(new Date().toISOString()))} por ${esc(sessao.nome||'')} · SIGECON Produtividade da Frota</span><span>Código de conferência do período: ${codigo}</span></div>
+  </div>`;
+}
+
 
 /* ===================================================================== */
 /* INSTALAÇÃO E ATUALIZAÇÃO (PWA)                                        */
