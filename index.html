@@ -606,7 +606,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.6.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.7.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -982,14 +982,44 @@ async function enviarParaFrotaRdo(r){
     if (error) throw error;
     id = data.id;
   }
-  const { error:e2 } = await sb.from('frota_rdo_ajustes').delete().eq('frota_rdo_id', id);
-  if (e2) throw e2;
-  if (r.ajustes.length) {
-    const { error:e3 } = await sb.from('frota_rdo_ajustes').insert(r.ajustes.map(a=>({
-      frota_rdo_id:id, equipamento_id:r.equipamento_id, data:r.data, tipo:a.tipo, descricao:a.descricao, valor:a.valor, criado_por:sessao.id })));
-    if (e3) throw e3;
-  }
+  await sincronizarAjustesDoApp(r, id);
   return id;
+}
+// Acréscimos/descontos: o app só mexe nos que ele mesmo criou, sempre pelo id.
+// Nunca apaga nem recria: a medição (BM) guarda o id de cada lançamento, e os
+// que o escritório lançou pelo gestão de frota ficam intocados.
+async function sincronizarAjustesDoApp(r, rdoId){
+  const meus = new Set((r.ajustes_app_ids||[]).map(String));
+  const atuais = r.ajustes.filter(a=>a.id!=null && meus.has(String(a.id)));
+  const idsAtuais = new Set(atuais.map(a=>String(a.id)));
+  const removidos = (r.ajustes_app_ids||[]).filter(id=>id!=null && !idsAtuais.has(String(id)));   // ids como vieram do banco
+  if (removidos.length) { const { error } = await sb.from('frota_rdo_ajustes').delete().in('id', removidos); if (error) throw error; }
+  for (const a of atuais) {
+    const { error } = await sb.from('frota_rdo_ajustes').update({ tipo:a.tipo, descricao:a.descricao, valor:a.valor }).eq('id', a.id);
+    if (error) throw error;
+  }
+  for (const a of r.ajustes.filter(x=>x.id==null || !meus.has(String(x.id)))) {
+    const { data, error } = await sb.from('frota_rdo_ajustes').insert({ frota_rdo_id:rdoId, equipamento_id:r.equipamento_id, data:r.data,
+      tipo:a.tipo, descricao:a.descricao, valor:a.valor, criado_por:sessao.id }).select('id').single();
+    if (error) throw error;
+    a.id = data.id;
+  }
+  r.ajustes_app_ids = r.ajustes.map(a=>a.id);
+}
+// Acréscimos/descontos que o escritório lançou no dia (só leitura no app)
+const _ajustesEscritorio = {};
+async function ajustesDoEscritorio(r){
+  if (!ehApontador() || r.frota_rdo_id==null || !online()) return _ajustesEscritorio[r.id] || [];
+  const { data, error } = await sb.from('frota_rdo_ajustes').select('id,tipo,descricao,valor').eq('frota_rdo_id', r.frota_rdo_id);
+  if (error) return _ajustesEscritorio[r.id] || [];
+  const meus = new Set((r.ajustes_app_ids||[]).map(String));
+  return (_ajustesEscritorio[r.id] = (data||[]).filter(a=>!meus.has(String(a.id))));
+}
+async function mostrarAjustesEscritorio(){
+  const el = document.getElementById('ajustes-escritorio'); if (!el || !rdo) return;
+  const lista = await ajustesDoEscritorio(rdo);
+  el.innerHTML = lista.length ? `<div class="secao-titulo">Lançados pelo escritório</div><dl class="lista-def">${lista.map(a=>`<div><dt>${a.tipo==='acrescimo'?'Acréscimo':'Desconto'}: ${esc(a.descricao)}</dt><dd>${fmtR$(a.valor)}</dd></div>`).join('')}</dl>
+    <div class="ajuda" style="margin:-6px 2px 14px">Não fazem parte da assinatura. Só o escritório altera, pelo gestão de frota.</div>` : '';
 }
 
 const Prefs = {
@@ -1582,6 +1612,7 @@ function renderRdo(){
   if (pode) {
     corpo.innerHTML = [passoMaquina, passoDia, passoHoras, passoOcorrencias, passoRevisao, passoAssinar][passoAtual]();
     if (passoAtual===2) ligarRegua();
+    if (passoAtual===3) mostrarAjustesEscritorio();
   } else if (passoAtual===4) {
     corpo.innerHTML = painelLancamento(); conferirIntegridade();
   } else {
@@ -1876,6 +1907,7 @@ function passoOcorrencias(){
       <div class="campo"><span class="rotulo">Descrição *</span><input type="text" id="aj-desc" placeholder="Ex: para-brisa, multa"/></div>
       <div class="campo"><span class="rotulo">Valor (R$) *</span><input type="text" inputmode="decimal" id="aj-valor"/></div>
       <div class="erro-msg" id="aj-erro"></div><button class="btn-add-linha" onclick="addAjuste()">+ Adicionar</button>`) : ''}
+    <div id="ajustes-escritorio"></div>
     <div class="campo" style="margin-top:6px"><span class="rotulo">Observação do dia</span>
       <textarea placeholder="Algo que o escritório precisa saber" oninput="rdo.ocorrencia_geral=this.value;autosalvar()">${esc(rdo.ocorrencia_geral)}</textarea></div>
     <div class="barra-acao"><button class="btn" onclick="irPasso(4)">Revisar lançamento</button></div>`;
@@ -2305,7 +2337,7 @@ function painelLancamento(){
   }
   if (r.fluxo!=='rascunho' && botoes.length<3) botoes.push(`<button class="btn ${botoes.length?'btn-secundario':''}" onclick="imprimirFicha(rdo)" aria-label="Imprimir ficha">🖨️${botoes.length?'':' Imprimir ficha'}</button>`);
   const dicaVer = `<div class="dica-ver">Toque em <b>Dia</b>, <b>Horas</b> ou <b>Extras</b> lá em cima pra ver os detalhes.</div>`;
-  return banner + resumoEquipHtml() + numerosDia() + reguaMini(r.grade) + '<div style="height:14px"></div>' + assin + detalhesDia() +
+  return banner + resumoEquipHtml() + numerosDia() + reguaMini(r.grade) + '<div style="height:14px"></div>' + assin + detalhesDia() + '<div id="ajustes-escritorio"></div>' +
     ((r.historico||[]).length ? `<div class="secao-titulo">Histórico</div><dl class="lista-def">${r.historico.map(h=>`<div><dt>${esc(fmtHoraCompleta(h.em))}</dt><dd style="font-weight:500">${esc(h.por)}: ${esc(h.acao)}${h.motivo?' ("'+esc(h.motivo)+'")':''}</dd></div>`).join('')}</dl>` : '') +
     dicaVer + `<div class="barra-acao"><div class="btn-linha acoes">${botoes.join('')}</div></div>`;
 }
@@ -2336,7 +2368,7 @@ async function mostrarSelfies(){
   }
 }
 async function conferirIntegridade(){
-  mostrarSelfies();
+  mostrarSelfies(); mostrarAjustesEscritorio();
   const els = document.querySelectorAll('.integridade[data-hash]'); if (!els.length) return;
   let h; try { h = await sha256(conteudoCanonico(rdo)); } catch (e) { return; }
   els.forEach(el=>{ if (el.dataset.hash===h) { el.className='integridade ok'; el.textContent=' ✓ confere'; } else { el.className='integridade erro'; el.textContent=' ⚠ conteúdo alterado depois'; } });
@@ -2421,6 +2453,7 @@ async function corrigir(){
 /* FICHA IMPRESSA (modelo do RDO do gestão de frota, preenchido)          */
 async function imprimirFicha(r){
   const a0 = r.assinaturas || {};
+  const ajEsc = await ajustesDoEscritorio(r).catch(()=>[]);
   const fotos = { operador: await urlDaSelfie(a0.operador?.selfie).catch(()=>null), apontador: await urlDaSelfie(a0.apontador?.selfie).catch(()=>null) };
   const e = Repo.equipamento(r.equipamento_id), o = Repo.obra(r.obra_id), g = resumoGrade(r.grade), un = unidMedidor(e);
   const a = r.assinaturas || {};
@@ -2457,7 +2490,7 @@ async function imprimirFicha(r){
       <div class="rodc"><div class="sec" style="margin-top:0">3. Abastecimento</div>
         ${r.abastecimentos.length ? `<table class="tg"><thead><tr><th>Hora</th><th>${rotuloMedidor(e)}</th><th>Litros</th><th>Combustível</th></tr></thead><tbody>${r.abastecimentos.map(x=>`<tr><td>${esc(x.hora||'—')}</td><td>${fmtNum(x.horimetro_km)}</td><td>${fmtNum(x.litros)}</td><td>${esc(x.combustivel||'')}</td></tr>`).join('')}</tbody></table>` : '<div class="nada">Nenhum</div>'}</div>
     </div>
-    ${r.ajustes.length ? `<div class="sec">4. Acréscimos e descontos</div><table class="tg"><tbody>${r.ajustes.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td><td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
+    ${r.ajustes.length || ajEsc.length ? `<div class="sec">4. Acréscimos e descontos</div><table class="tg"><thead><tr><th>Tipo</th><th>Descrição</th><th>Lançado por</th><th class="n">Valor</th></tr></thead><tbody>${r.ajustes.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td><td>Campo</td><td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}${ajEsc.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td><td>Escritório</td><td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
     <div class="sigs">
       ${sig('Operador / motorista', a.operador, a.recusa_operador ? 'Não assinou: '+a.recusa_operador.motivo : 'Aguardando assinatura', fotos.operador)}
       ${sig('Encarregado / fiscal de campo', a.apontador, 'Aguardando assinatura', fotos.apontador)}
