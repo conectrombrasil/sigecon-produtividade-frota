@@ -585,7 +585,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.2.1', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.3.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -787,7 +787,7 @@ const Repo = {
 
   rdos(){ return this._rdos.filter(r=>r.fluxo!=='cancelado'); },
   rdo(id){ return this._rdos.find(r=>r.id===id); },
-  doDia(equipId, data, excetoId){ return this.rdos().find(r=>r.equipamento_id===equipId && r.data===data && r.id!==excetoId); },
+  doDia(equipId, data, excetoId){ return this.rdos().find(r=>r.fluxo && r.equipamento_id===equipId && r.data===data && r.id!==excetoId); },
   doServidor(equipId, data, rec){
     return this.servidor.find(s=>s.equipamento_id===equipId && s.data===data && !(rec && rec.frota_rdo_id===s.id)
       && !this._rdos.some(r=>r.frota_rdo_id===s.id && r.id!==rec?.id && r.fluxo!=='cancelado'));
@@ -1119,6 +1119,7 @@ function seloRdo(r){
   const op = ehOperador();
   const S = (cls, txt)=>`<span class="selo ${cls}">${txt}</span>`;
   let s;
+  if (!r.fluxo) return S('selo-neutro','Versão antiga do app');
   switch (r.fluxo) {
     case 'rascunho': s = r.responsavel_id===sessao?.id ? S('selo-rascunho','Rascunho') : S('selo-neutro', 'Em correção por '+esc(r.criado_por_id===r.responsavel_id ? r.criado_por : 'outro usuário')); break;
     case 'aguardando_apontador': s = op ? S('selo-info','Com o apontador') : S('selo-rascunho','Para validar'); break;
@@ -1392,6 +1393,7 @@ function abrirTrocaObra(titulo){
 function abrirMenu(){
   const ops = [
     { valor:'atualizar', ic:'🔄', rotulo:'Atualizar dados do sistema', sub: online() ? 'Obras, máquinas, listas e lançamentos' : 'Precisa de internet' },
+    { valor:'recarregar', ic:'🧹', rotulo:'Recarregar lançamentos do sistema', sub:'Apaga as cópias do celular e baixa de novo' },
     { valor:'sobre', ic:'ℹ️', rotulo:'Sobre o app', sub:'Versão '+CONFIG.VERSAO_APP },
     { valor:'sair', ic:'🚪', rotulo:'Sair', sub:juntar(sessao?.nome, sessao?.papel==='operador'?'operador':'apontador'), perigo:true },
   ];
@@ -1402,6 +1404,7 @@ function abrirMenu(){
       catch (e) { toast('Não foi possível atualizar: '+traduzErro(e), 'erro'); }
     }
     if (v==='sair') sair();
+    if (v==='recarregar') recarregarDoSistema();
     if (v==='sobre') abrirModal('Sobre o app', `<dl class="lista-def">
       <div><dt>Versão</dt><dd>${CONFIG.VERSAO_APP}</dd></div>
       <div><dt>Usuário</dt><dd>${esc(sessao?.nome||'—')}</dd></div>
@@ -1447,21 +1450,60 @@ function sairDoRdo(){
   if (rdo && rdo.equipamento_id && editavel(rdo)) Repo.salvar(rdo).catch(()=>{});
   rdo = null; mostrarTela('tela-home'); renderHome();
 }
+// O que cada um pode excluir
+function exclusaoPossivel(r){
+  if (!r || r.fluxo==='cancelado') return null;
+  const eu = sessao.id;
+  if (!r.fluxo) return 'local';                                            // versão antiga do app
+  if (travado(r)) return 'medido';
+  if (r.fluxo==='no_sistema') return 'no_sistema';
+  if (!r.no_servidor && (r.responsavel_id===eu || r.criado_por_id===eu)) return 'local';   // nunca saiu do celular
+  if (ehApontador()) return 'cancelar';
+  if (r.criado_por_id===eu && ['rascunho','aguardando_apontador','devolvido'].includes(r.fluxo)) return 'cancelar';
+  return null;
+}
 function abrirMenuRdo(){
   const ops = [];
   if (rdo.fluxo!=='rascunho' || !editavel(rdo)) ops.push({ valor:'imprimir', ic:'🖨️', rotulo:'Imprimir ficha / salvar PDF' });
   ops.push({ valor:'sair', ic:'↩', rotulo: editavel(rdo) ? 'Sair e continuar depois' : 'Voltar à lista', sub: editavel(rdo) ? 'O rascunho fica salvo no celular' : '' });
-  const podeExcluir = editavel(rdo) && Repo.rdo(rdo.id) && !(rdo.assinaturas_anuladas||[]).length && rdo.fluxo==='rascunho';
-  if (podeExcluir) ops.push({ valor:'excluir', ic:'🗑️', rotulo:'Excluir rascunho', perigo:true });
+  const ex = exclusaoPossivel(Repo.rdo(rdo.id) || rdo);
+  if (ex==='local' || ex==='cancelar') ops.push({ valor:'excluir', ic:'🗑️', rotulo:'Excluir lançamento', perigo:true,
+    sub: ex==='local' ? 'Apaga deste celular' : 'Some do celular e do apontador/operador' });
+  if (ex==='no_sistema') ops.push({ valor:'info_sistema', ic:'ℹ️', rotulo:'Excluir lançamento', sub:'Já está no sistema: só pelo gestão de frota' });
   escolherOpcao('Lançamento', ops, async v=>{
     if (v==='imprimir') imprimirFicha(rdo);
     if (v==='sair') sairDoRdo();
-    if (v==='excluir' && confirm('Excluir este rascunho? Não dá pra desfazer.')) {
-      if (rdo.no_servidor) { rdo.fluxo = 'cancelado'; await Repo.salvar(rdo); Sinc.rodar(true); } else await Repo.apagar(rdo.id);
-      rdo = null; mostrarTela('tela-home'); renderHome(); toast('Rascunho excluído');
-    }
+    if (v==='info_sistema') toast('Este lançamento já está no sistema. Peça ao escritório pra apagar no gestão de frota; aqui ele some sozinho.', 'erro');
+    if (v==='excluir') excluirLancamento(ex);
   });
 }
+async function excluirLancamento(tipo){
+  const e = Repo.equipamento(rdo.equipamento_id);
+  if (!confirm(`Excluir o lançamento de ${juntar(idEquip(e)||e?.descricao, fmtData(rdo.data, true))}? Não dá pra desfazer.`)) return;
+  clearTimeout(_autoT);
+  if (tipo==='local') await Repo.apagar(rdo.id);
+  else {
+    const r = Repo.rdo(rdo.id) || rdo;
+    r.fluxo = 'cancelado'; registrar(r, 'excluiu o lançamento');
+    await Repo.salvar(r); Sinc.rodar(true);
+  }
+  rdo = null; mostrarTela('tela-home'); renderHome(); toast('Lançamento excluído');
+}
+// Apaga as cópias do celular e baixa tudo de novo (o que não foi enviado fica)
+async function recarregarDoSistema(){
+  if (!online()) { toast('Precisa de internet pra recarregar do sistema.', 'erro'); return; }
+  const pend = Repo.aEnviar().length + Repo.rdos().filter(r=>r.fluxo==='rascunho' && !r.no_servidor).length;
+  if (!confirm('Apagar as cópias guardadas neste celular e baixar de novo do sistema?' + (pend ? `\n\n${pend} ${pend>1?'lançamentos que ainda não foram enviados ficam':'lançamento que ainda não foi enviado fica'} guardado${pend>1?'s':''}.` : ''))) return;
+  for (const r of [...Repo._rdos]) {
+    const naoEnviado = r.fluxo && (r._pendente || (r.fluxo==='rascunho' && !r.no_servidor));
+    if (!naoEnviado) await Repo.apagar(r.id);
+  }
+  Repo.servidor = [];
+  try { await Promise.all([Repo.atualizarCatalogo(), Repo.atualizarServidor()]); } catch (e) {}
+  await Sinc.rodar(true);
+  renderHome(); toast('Lançamentos recarregados do sistema', 'sucesso');
+}
+
 function renderRdo(){
   const e = Repo.equipamento(rdo.equipamento_id);
   document.getElementById('rdo-titulo').textContent = e ? (idEquip(e) || e.descricao) : 'Novo lançamento';
