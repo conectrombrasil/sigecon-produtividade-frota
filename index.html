@@ -585,7 +585,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.1.1', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.2.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -667,7 +667,35 @@ const Repo = {
   },
   temCatalogo(){ return !!(this.cat && this.cat.obras && this.cat.usuario_id===sessao?.id); },
 
+  // Operador: uma função do banco devolve só as máquinas dele e o necessário
+  // pra lançar, sem dar acesso às tabelas do SIGECON
+  async catalogoDoOperador(){
+    const { data, error } = await sb.rpc('fc_catalogo_operador');
+    if (error) throw error;
+    return data || {};
+  },
   async atualizarCatalogo(){
+    if (ehOperador()) {
+      const d = await this.catalogoDoOperador();
+      const listas = d.listas || [];
+      const eventos = listas.filter(l=>l.tipo==='evento');
+      this.cat = {
+        versao: new Date().toISOString(), usuario_id: sessao.id,
+        obras: d.obras || [], fornecedores: d.fornecedores || [],
+        equipamentos: (d.equipamentos||[]).map(e=>({
+          id:e.id, obra_id:e.obra_id, fornecedor_id:e.fornecedor_id, descricao:e.descricao,
+          prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
+          icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜',
+          operadores:[{ id:sessao.id, nome:sessao.nome, matricula:sessao.matricula||'' }] })),
+        eventos: eventos.map((ev,i)=>({ nome:ev.nome, codigo:ev.codigo||'', chave_fixa:ev.chave_fixa||null, cor:corDoEvento(ev,i) })),
+        atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
+        locais: listas.filter(l=>l.tipo==='local').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
+        combustiveis: ['Diesel S10','Diesel S500','Gasolina','Outro'],
+      };
+      this.servidor = d.rdo || [];
+      await BD.gravar('meta', this.cat, 'catalogo'); await BD.gravar('meta', this.servidor, 'servidor');
+      return;
+    }
     const res = await Promise.all([
       sb.from('obras').select('id,nome').eq('status','ativa').order('nome'),
       sb.from('equipamentos').select('*,frota_tipos!equipamentos_frota_tipo_id_fkey(nome,categoria)').eq('ativo',true).order('descricao'),
@@ -707,9 +735,13 @@ const Repo = {
   },
   // Lançamentos oficiais recentes: evita duplicar e traz o status de medição
   async atualizarServidor(){
-    const { data, error } = await sb.from('frota_rdo').select('id,obra_id,equipamento_id,data,horimetro_final,status_medicao')
-      .gte('data', hojeISO(-CONFIG.DIAS_HISTORICO)).order('data', { ascending:false }).limit(5000);
-    if (error) throw error;
+    let data;
+    if (ehOperador()) data = (await this.catalogoDoOperador()).rdo;
+    else {
+      const r = await sb.from('frota_rdo').select('id,obra_id,equipamento_id,data,horimetro_final,status_medicao')
+        .gte('data', hojeISO(-CONFIG.DIAS_HISTORICO)).order('data', { ascending:false }).limit(5000);
+      if (r.error) throw r.error; data = r.data;
+    }
     this.servidor = data || [];
     await BD.gravar('meta', this.servidor, 'servidor');
     for (const r of this._rdos) {
