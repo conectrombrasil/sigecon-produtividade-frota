@@ -514,12 +514,26 @@
   <div class="conteudo">
     <img class="logo-app" src="icone.svg" alt=""/>
     <div class="logo-titulo">Produtividade da Frota</div>
-    <div class="logo-sub">SIGECON. Entre com o mesmo e-mail e senha do sistema.</div>
+    <div class="logo-sub">SIGECON. Entre com seu e-mail e senha.</div>
     <div class="campo"><input type="email" id="login-email" placeholder="E-mail" autocomplete="username" inputmode="email" enterkeyhint="next" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-senha').focus();}"/></div>
     <div class="campo"><input type="password" id="login-senha" placeholder="Senha" autocomplete="current-password" enterkeyhint="go" onkeydown="if(event.key==='Enter'){event.preventDefault();fazerLogin();}"/></div>
     <div class="erro-msg" id="login-erro"></div>
     <button class="btn" id="btn-login" onclick="fazerLogin()">Entrar</button>
-    <div class="ajuda" style="text-align:center;margin-top:14px">Na primeira vez é preciso internet. Depois o app abre mesmo sem sinal.</div>
+    <button class="link-acao" style="text-align:center;width:100%;max-width:380px;padding:16px 0 4px" onclick="abrirEsqueciSenha()">Esqueci minha senha</button>
+    <div class="ajuda" style="text-align:center;margin-top:10px">Na primeira vez é preciso internet. Depois o app abre mesmo sem sinal.</div>
+  </div>
+</div>
+
+<!-- ================= NOVA SENHA (link do e-mail de recuperação) ================= -->
+<div class="tela tela-centro" id="tela-nova-senha">
+  <div class="conteudo">
+    <img class="logo-app" src="icone.svg" alt=""/>
+    <div class="logo-titulo">Criar nova senha</div>
+    <div class="logo-sub" id="nova-senha-sub">Escolha a senha que você vai usar pra entrar no app.</div>
+    <div class="campo"><input type="password" id="nova-senha-1" placeholder="Nova senha (mínimo 6 caracteres)" autocomplete="new-password"/></div>
+    <div class="campo"><input type="password" id="nova-senha-2" placeholder="Repita a nova senha" autocomplete="new-password" onkeydown="if(event.key==='Enter'){event.preventDefault();salvarNovaSenha();}"/></div>
+    <div class="erro-msg" id="nova-senha-erro"></div>
+    <button class="btn" id="btn-nova-senha" onclick="salvarNovaSenha()">Salvar e entrar</button>
   </div>
 </div>
 
@@ -571,7 +585,9 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.0.0', DIAS_HISTORICO: 45, MODULO: 'produtividade_campo' };
+const CONFIG = { VERSAO_APP: '3.1.0', DIAS_HISTORICO: 45 };
+// Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
+const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZnJ5Ynl4Y2Fta3V5ZXd6eW5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyODQzNTcsImV4cCI6MjA5MTg2MDM1N30.DWzvf6tS-0TQ_zfXaq3MKE5eCwIz0gMyidAPBs-YuJ0';
 const { createClient } = supabase;
@@ -667,11 +683,11 @@ const Repo = {
     const idsOp = [...new Set(vinculos.map(v=>v.usuario_id))];
     let nomes = {};
     if (idsOp.length) {
-      const { data } = await sb.from('usuarios').select('*').in('id', idsOp);
-      (data||[]).forEach(u=>{ nomes[u.id] = { nome: nomeDoUsuario(u), matricula: u.matricula ? String(u.matricula) : '' }; });
+      const { data } = await sb.from('frota_operadores').select('id,nome,matricula,ativo').in('id', idsOp);
+      (data||[]).filter(u=>u.ativo!==false).forEach(u=>{ nomes[u.id] = { nome: u.nome, matricula: u.matricula || '' }; });
     }
     const opsPorEquip = {};
-    vinculos.forEach(v=>{ (opsPorEquip[v.equipamento_id] = opsPorEquip[v.equipamento_id] || []).push({ id:v.usuario_id, nome:nomes[v.usuario_id]?.nome || 'Operador', matricula:nomes[v.usuario_id]?.matricula || '' }); });
+    vinculos.filter(v=>nomes[v.usuario_id] || v.usuario_id===sessao.id).forEach(v=>{ (opsPorEquip[v.equipamento_id] = opsPorEquip[v.equipamento_id] || []).push({ id:v.usuario_id, nome:nomes[v.usuario_id]?.nome || 'Operador', matricula:nomes[v.usuario_id]?.matricula || '' }); });
     let equipamentos = equips.filter(e=>mob[e.id]).map(e=>({
       id:e.id, obra_id:mob[e.id], fornecedor_id:e.fornecedor_id, descricao:e.descricao,
       prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
@@ -1065,11 +1081,18 @@ function seloRdo(r){
 /* ===================================================================== */
 /* ABERTURA E LOGIN                                                      */
 function comTempo(p, ms){ return Promise.race([p, new Promise((_,f)=>setTimeout(()=>f(new Error('tempo')), ms))]); }
+// Link de recuperação do e-mail: o Supabase volta pra cá com type=recovery
+const EH_RECUPERACAO = /type=recovery/.test(ENDERECO_INICIAL);
 async function iniciar(){
   try { await Repo.iniciar(); }
   catch (e) { document.getElementById('carregando-msg').textContent = 'Este navegador não permite guardar dados no aparelho. Use o Chrome (Android) ou o Safari (iPhone).'; return; }
   let s = null;
   try { const r = await comTempo(sb.auth.getSession(), 6000); s = r.data.session; } catch (e) {}
+  if (EH_RECUPERACAO) {
+    history.replaceState(null, '', location.pathname);
+    if (s) { sessao = { id:s.user.id, email:s.user.email }; document.getElementById('nova-senha-sub').textContent = 'Conta: '+s.user.email; return mostrarTela('tela-nova-senha'); }
+    toast('O link de recuperação expirou. Peça outro.', 'erro'); return mostrarTela('tela-login');
+  }
   const conhecido = Prefs.get().sessao;
   if (s && conhecido && conhecido.id===s.user.id) sessao = conhecido;
   else if (s) sessao = { id:s.user.id, email:s.user.email };
@@ -1093,20 +1116,65 @@ async function fazerLogin(){
   document.getElementById('login-senha').value = '';
   await iniciarLogado(true);
 }
-// Papel no app: segue o mesmo esquema de permissões do SIGECON
+function abrirEsqueciSenha(){
+  const email = document.getElementById('login-email').value.trim();
+  abrirModal('Esqueci minha senha', `<div class="passo-desc">Informe seu e-mail. Você vai receber um link pra criar uma senha nova.</div>
+    <div class="campo"><input type="email" id="esq-email" placeholder="E-mail" inputmode="email" autocomplete="username" value="${esc(email)}"/></div>
+    <div class="erro-msg" id="esq-erro"></div>
+    <button class="btn" id="esq-btn" onclick="enviarLinkSenha()">Enviar link</button>`);
+}
+async function enviarLinkSenha(){
+  const email = document.getElementById('esq-email').value.trim(), erro = document.getElementById('esq-erro'), btn = document.getElementById('esq-btn');
+  erro.textContent = '';
+  if (!email) { erro.textContent = 'Informe seu e-mail.'; return; }
+  if (!online()) { erro.textContent = 'Precisa de internet pra isso.'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Enviando';
+  let res; try { res = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }); } catch (e) { res = { error:e }; }
+  btn.disabled = false; btn.textContent = 'Enviar link';
+  if (res.error) { erro.textContent = /rate|limit/i.test(res.error.message||'') ? 'Muitas tentativas. Espere alguns minutos e tente de novo.' : 'Não foi possível enviar agora. Tente de novo.'; return; }
+  document.getElementById('modal-corpo').innerHTML = `<div class="passo-desc">Se esse e-mail estiver cadastrado, o link chega em alguns minutos. Abra o e-mail <b>neste celular</b> e toque no link. Confira também a caixa de spam.</div>
+    <button class="btn" onclick="fecharModal()">Entendi</button>`;
+}
+async function salvarNovaSenha(){
+  const s1 = document.getElementById('nova-senha-1').value, s2 = document.getElementById('nova-senha-2').value;
+  const erro = document.getElementById('nova-senha-erro'), btn = document.getElementById('btn-nova-senha');
+  erro.textContent = '';
+  if (s1.length<6) { erro.textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return; }
+  if (s1!==s2) { erro.textContent = 'As duas senhas não são iguais.'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Salvando';
+  const { error } = await sb.auth.updateUser({ password: s1 });
+  btn.disabled = false; btn.textContent = 'Salvar e entrar';
+  if (error) { erro.textContent = 'Não foi possível salvar: '+(error.message||''); return; }
+  document.getElementById('nova-senha-1').value = ''; document.getElementById('nova-senha-2').value = '';
+  toast('Senha criada', 'sucesso');
+  await iniciarLogado(true);
+}
+
+// Papel no app:
+//  operador  = cadastrado na frota_operadores (aba Operadores do gestão de frota)
+//  apontador = admin do SIGECON, ou gestão de frota com perfil gestor/operador
 async function carregarUsuario(){
-  const { data:u } = await sb.from('usuarios').select('*,perfis(nome)').eq('id', sessao.id).single();
-  const perfilGlobal = u?.perfis?.nome;
-  if (perfilGlobal==='fornecedor') throw new Error('sem_acesso');
-  const { data:mods } = await sb.from('usuario_modulos').select('modulo,perfil').eq('usuario_id', sessao.id).in('modulo', [CONFIG.MODULO, 'gestao_frota']);
-  const pc = (mods||[]).find(m=>m.modulo===CONFIG.MODULO), gf = (mods||[]).find(m=>m.modulo==='gestao_frota');
+  const { data:op, error:eOp } = await sb.from('frota_operadores').select('id,nome,matricula,ativo').eq('id', sessao.id).maybeSingle();
+  if (eOp) throw eOp;
+  if (op) {
+    if (op.ativo===false) throw new Error('desativado');
+    sessao.papel = 'operador'; sessao.nome = op.nome; sessao.matricula = op.matricula || '';
+    Prefs.set('sessao', sessao); return;
+  }
+  const { data:u } = await sb.from('usuarios').select('*,perfis(nome)').eq('id', sessao.id).maybeSingle();
+  if (!u || u.ativo===false) throw new Error('sem_acesso');
+  const perfilGlobal = u.perfis?.nome;
+  if (perfilGlobal==='fornecedor' || u.fornecedor_id) throw new Error('sem_acesso');
   let papel = null;
-  if (perfilGlobal==='admin' || pc?.perfil==='apontador' || gf) papel = 'apontador';
-  else if (pc?.perfil==='operador') papel = 'operador';
+  if (perfilGlobal==='admin') papel = 'apontador';
+  else {
+    const { data:gf } = await sb.from('usuario_modulos').select('perfil').eq('usuario_id', sessao.id).eq('modulo','gestao_frota').maybeSingle();
+    if (gf && ['gestor','operador'].includes(gf.perfil || 'operador')) papel = 'apontador';
+  }
   if (!papel) throw new Error('sem_acesso');
   sessao.papel = papel;
   sessao.nome = nomeDoUsuario(u) || (sessao.email||'').split('@')[0];
-  sessao.matricula = u?.matricula ? String(u.matricula) : '';
+  sessao.matricula = u.matricula ? String(u.matricula) : '';
   Prefs.set('sessao', sessao);
 }
 function telaMensagem(html){ mostrarTela('tela-carregando'); document.getElementById('carregando-msg').innerHTML = html; }
@@ -1115,8 +1183,8 @@ async function iniciarLogado(primeiraVez){
   if (online()) {
     try { await comTempo(carregarUsuario(), 15000); }
     catch (e) {
-      if (e.message==='sem_acesso') { sb.auth.signOut({ scope:'local' }).catch(()=>{}); sessao = null; Prefs.set('sessao', null);
-        telaMensagem('Seu usuário não tem acesso a este app.<br/>Peça ao escritório pra liberar o módulo Produtividade da Frota.<br/><br/><button class="btn" onclick="mostrarTela(\'tela-login\')">Voltar</button>'); return; }
+      if (e.message==='sem_acesso' || e.message==='desativado') { sb.auth.signOut({ scope:'local' }).catch(()=>{}); sessao = null; Prefs.set('sessao', null);
+        telaMensagem((e.message==='desativado' ? 'Seu cadastro de operador está desativado.<br/>Fale com o apontador ou com o escritório.' : 'Seu usuário não tem acesso a este app.<br/>Operadores são cadastrados pelo escritório no gestão de frota.')+'<br/><br/><button class="btn" onclick="mostrarTela(\'tela-login\')">Voltar</button>'); return; }
       if (!sessao.papel) { telaMensagem('Não foi possível falar com o sistema agora.<br/><br/><button class="btn" onclick="iniciarLogado()">Tentar de novo</button>'); return; }
     }
     try {

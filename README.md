@@ -19,25 +19,23 @@ Qualquer lançamento enviado pode ser impresso ou salvo em PDF (menu ⋯ ou bot�
 
 ## Passo a passo para colocar no ar
 
-### 1. Banco de dados (uma vez)
-Rode `supabase-produtividade-frota.sql` no Supabase (**SQL Editor → New query → colar → Run**). Ele cria:
-- a coluna `assinaturas` na `frota_rdo`;
-- a tabela `frota_operador_equipamentos` (quem opera cada máquina);
-- a tabela `frota_rdo_campo` (lançamentos circulando entre operador e apontador);
-- as regras de acesso dessas tabelas.
-
-Nada do que já existe é alterado ou apagado.
+### 1. Banco de dados
+Os blocos de SQL foram passados separados, na ordem de execução, no Supabase (**SQL Editor → New query → colar → Run**).
 
 ### 2. Gestão de frota
-Substitua o `frota-gestao.html` do sistema pela versão nova. Muda duas coisas:
-- **Produtividade → Cadastros** ganhou a aba **Operadores**, onde o escritório vincula operador e máquina;
-- o histórico de produtividade deixou de carregar as imagens das assinaturas, para continuar leve.
+Substitua o `frota-gestao.html` do sistema pela versão nova. Em **Produtividade → Cadastros → Operadores** o pessoal da obra:
+- cadastra o operador de máquina (nome, e-mail, matrícula e senha inicial);
+- vincula o operador às máquinas dele;
+- desativa quem saiu (ele deixa de conseguir entrar no app).
 
-### 3. Acessos
-- **Apontador:** quem já tem acesso ao módulo gestão de frota entra como apontador.
-- **Operador:** precisa do módulo `produtividade_campo` com perfil `operador` na `usuario_modulos`. Se o cadastro de usuários do sistema ainda não oferece esse módulo, o final do arquivo SQL mostra como liberar.
+O histórico de produtividade deixou de carregar as imagens das assinaturas, para continuar leve.
 
-Depois, vincule cada operador às máquinas dele na aba **Operadores**.
+### 3. Quem entra no app
+- **Operador de máquina:** só quem foi cadastrado na aba Operadores. Ele **não** é usuário do SIGECON: não aparece na lista de usuários do sistema e o login do SIGECON não o deixa entrar.
+- **Apontador:** administrador do SIGECON, ou quem tem o módulo gestão de frota com perfil gestor ou operador (perfis do SIGECON). Visualizador não entra.
+
+### 3.1 Recuperação de senha
+O app tem "Esqueci minha senha". Para o link do e-mail abrir o app (e não o SIGECON), adicione o endereço do app no Supabase uma vez: **Authentication → URL Configuration → Redirect URLs** → `https://SEU-USUARIO.github.io/sigecon-produtividade-frota/`.
 
 ### 4. GitHub Pages
 Envie para a raiz da branch `main` do repositório `sigecon-produtividade-frota`:
@@ -70,7 +68,7 @@ Dá para lançar e assinar sem sinal. Tudo fica no celular e sobe sozinho quando
 
 ## Publicar uma nova versão
 
-Ao alterar `index.html` ou os ícones, aumente a `VERSAO` em `sw.js` (ex: `fc-v3.0.0` → `fc-v3.0.1`). Os celulares mostram o aviso **Nova versão do app**.
+Ao alterar `index.html` ou os ícones, aumente a `VERSAO` em `sw.js` (ex: `fc-v3.1.0` → `fc-v3.1.1`). Os celulares mostram o aviso **Nova versão do app**.
 
 ## Outros apps no mesmo GitHub
 
