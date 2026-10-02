@@ -585,7 +585,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.1.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.1.1', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -1154,21 +1154,24 @@ async function salvarNovaSenha(){
 //  operador  = cadastrado na frota_operadores (aba Operadores do gestão de frota)
 //  apontador = admin do SIGECON, ou gestão de frota com perfil gestor/operador
 async function carregarUsuario(){
+  // Se essa consulta falhar (ex: tabela ainda não criada), não pode travar o apontador
   const { data:op, error:eOp } = await sb.from('frota_operadores').select('id,nome,matricula,ativo').eq('id', sessao.id).maybeSingle();
-  if (eOp) throw eOp;
+  if (eOp) console.warn('frota_operadores:', eOp.message);
   if (op) {
     if (op.ativo===false) throw new Error('desativado');
     sessao.papel = 'operador'; sessao.nome = op.nome; sessao.matricula = op.matricula || '';
     Prefs.set('sessao', sessao); return;
   }
-  const { data:u } = await sb.from('usuarios').select('*,perfis(nome)').eq('id', sessao.id).maybeSingle();
-  if (!u || u.ativo===false) throw new Error('sem_acesso');
+  const { data:u, error:eU } = await sb.from('usuarios').select('*,perfis(nome)').eq('id', sessao.id).maybeSingle();
+  if (eU) throw eU;
+  if (!u || u.ativo===false) throw new Error(eOp ? 'Não foi possível consultar o cadastro de operadores: '+eOp.message : 'sem_acesso');
   const perfilGlobal = u.perfis?.nome;
   if (perfilGlobal==='fornecedor' || u.fornecedor_id) throw new Error('sem_acesso');
   let papel = null;
   if (perfilGlobal==='admin') papel = 'apontador';
   else {
-    const { data:gf } = await sb.from('usuario_modulos').select('perfil').eq('usuario_id', sessao.id).eq('modulo','gestao_frota').maybeSingle();
+    const { data:gf, error:eM } = await sb.from('usuario_modulos').select('perfil').eq('usuario_id', sessao.id).eq('modulo','gestao_frota').maybeSingle();
+    if (eM) throw eM;
     if (gf && ['gestor','operador'].includes(gf.perfil || 'operador')) papel = 'apontador';
   }
   if (!papel) throw new Error('sem_acesso');
@@ -1185,7 +1188,8 @@ async function iniciarLogado(primeiraVez){
     catch (e) {
       if (e.message==='sem_acesso' || e.message==='desativado') { sb.auth.signOut({ scope:'local' }).catch(()=>{}); sessao = null; Prefs.set('sessao', null);
         telaMensagem((e.message==='desativado' ? 'Seu cadastro de operador está desativado.<br/>Fale com o apontador ou com o escritório.' : 'Seu usuário não tem acesso a este app.<br/>Operadores são cadastrados pelo escritório no gestão de frota.')+'<br/><br/><button class="btn" onclick="mostrarTela(\'tela-login\')">Voltar</button>'); return; }
-      if (!sessao.papel) { telaMensagem('Não foi possível falar com o sistema agora.<br/><br/><button class="btn" onclick="iniciarLogado()">Tentar de novo</button>'); return; }
+      if (!sessao.papel) { telaMensagem(`Não foi possível falar com o sistema agora.<br/><small style="display:block;margin-top:8px;color:var(--warn-txt)">${esc(traduzErro(e))}</small><br/>
+        <button class="btn" onclick="iniciarLogado()">Tentar de novo</button><br/><button class="btn btn-secundario" onclick="sair(true)">Sair</button>`); return; }
     }
     try {
       telaMensagem('<span class="spinner"></span> Baixando obras e máquinas');
