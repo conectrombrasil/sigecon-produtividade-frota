@@ -483,6 +483,19 @@
   #impressao .sig-vazio{margin-top:auto;border-top:1px solid #999;padding-top:2px;font-size:8.5px;color:#666;}
   #impressao .ft{display:flex;justify-content:space-between;gap:10px;font-size:7.5px;color:#888;border-top:1px solid #eee;padding-top:3px;margin-top:4px;}
 
+  /* ===== Fotos: equipamento, assinatura salva e selfie ===== */
+  .equip-ic{position:relative;overflow:hidden;}
+  .equip-ic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:var(--navy3);}
+  .selfie-linha{display:flex;align-items:center;gap:12px;margin-top:6px;}
+  .selfie-foto{width:84px;height:84px;border-radius:14px;background:var(--navy3);border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;flex-shrink:0;}
+  .selfie-foto img{width:100%;height:100%;object-fit:cover;}
+  .selfie-foto.pequena{width:64px;height:64px;font-size:20px;border-style:solid;}
+  .consentimento{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--text2);line-height:1.45;margin-top:12px;cursor:pointer;}
+  .consentimento input{width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--orange);}
+  #impressao .sig-img{display:flex;align-items:center;gap:4px;margin-top:2px;}
+  #impressao .sig-img img{flex:1;min-width:0;}
+  #impressao .sig-img .sig-selfie{flex:0 0 16mm;width:16mm;height:16mm;object-fit:cover;border-radius:2mm;}
+
 </style>
 </head>
 <body>
@@ -585,7 +598,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.3.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.4.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -685,7 +698,7 @@ const Repo = {
         equipamentos: (d.equipamentos||[]).map(e=>({
           id:e.id, obra_id:e.obra_id, fornecedor_id:e.fornecedor_id, descricao:e.descricao,
           prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
-          icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜',
+          icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null,
           operadores:[{ id:sessao.id, nome:sessao.nome, matricula:sessao.matricula||'' }] })),
         eventos: eventos.map((ev,i)=>({ nome:ev.nome, codigo:ev.codigo||'', chave_fixa:ev.chave_fixa||null, cor:corDoEvento(ev,i) })),
         atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
@@ -698,7 +711,7 @@ const Repo = {
     }
     const res = await Promise.all([
       sb.from('obras').select('id,nome').eq('status','ativa').order('nome'),
-      sb.from('equipamentos').select('*,frota_tipos!equipamentos_frota_tipo_id_fkey(nome,categoria)').eq('ativo',true).order('descricao'),
+      sb.from('equipamentos').select('*,frota_tipos!equipamentos_frota_tipo_id_fkey(nome,categoria,foto_url)').eq('ativo',true).order('descricao'),
       sb.from('frota_rdo_listas').select('*').eq('ativo',true).order('ordem'),
       sb.from('fornecedores').select('id,razao_social').order('razao_social'),
       sb.from('contrato_ativos').select('equipamento_id,status,contratos(obra_id)').eq('status','ativo').not('equipamento_id','is',null),
@@ -719,7 +732,7 @@ const Repo = {
     let equipamentos = equips.filter(e=>mob[e.id]).map(e=>({
       id:e.id, obra_id:mob[e.id], fornecedor_id:e.fornecedor_id, descricao:e.descricao,
       prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
-      icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', operadores: opsPorEquip[e.id] || [],
+      icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null, operadores: opsPorEquip[e.id] || [],
     }));
     if (ehOperador()) equipamentos = equipamentos.filter(e=>e.operadores.some(o=>o.id===sessao.id));
     const eventos = listas.filter(l=>l.tipo==='evento');
@@ -818,12 +831,40 @@ const Repo = {
    ===================================================================== */
 const CAMPOS_LOCAIS = ['_pendente','no_servidor'];
 function paraServidor(r){ const c = JSON.parse(JSON.stringify(r)); CAMPOS_LOCAIS.forEach(k=>delete c[k]); return c; }
+// A selfie fica no celular até subir pro Storage (espaço privado);
+// no lançamento fica só o caminho do arquivo.
+async function subirSelfies(r){
+  const grupos = [r.assinaturas, ...(r.assinaturas_anuladas||[])].filter(Boolean);
+  for (const g of grupos) for (const papel of ['operador','apontador']) {
+    const a = g[papel];
+    if (!a || !a.selfie || !a.selfie.local) continue;
+    if (a.usuario_id!==sessao.id) { delete a.selfie.local; continue; }   // não é minha: não tenho como subir
+    const caminho = `${sessao.id}/${r.id}-${papel}-${new Date(a.em).getTime()}.jpg`;
+    const blob = await (await fetch(a.selfie.local)).blob();
+    const { error } = await sb.storage.from('frota-selfies').upload(caminho, blob, { contentType:'image/jpeg', upsert:false });
+    if (error && !/exist|duplicate/i.test(error.message||'')) throw error;
+    a.selfie = { caminho, bytes: blob.size };
+  }
+}
+const urlsSelfie = {};
+async function urlDaSelfie(sf){
+  if (!sf) return null;
+  if (sf.local) return sf.local;
+  if (!sf.caminho || !online()) return null;
+  if (urlsSelfie[sf.caminho]) return urlsSelfie[sf.caminho];
+  const { data, error } = await sb.storage.from('frota-selfies').createSignedUrl(sf.caminho, 3600);
+  if (error || !data) return null;
+  return (urlsSelfie[sf.caminho] = data.signedUrl);
+}
+
 const Sinc = {
   rodando: false,
   async empurrar(){
     let ok = 0, ultimoErro = null;
     for (const r of Repo.aEnviar()) {
       if (r.bloqueado_envio) continue;
+      try { await subirSelfies(r); await Repo.salvar(r, true); }
+      catch (e) { r.erro_envio = 'Não deu pra enviar a foto da assinatura: '+traduzErro(e); ultimoErro = e; await Repo.salvar(r, true); continue; }
       const linha = { id:r.id, obra_id:r.obra_id, equipamento_id:r.equipamento_id, data:r.data,
         operador_usuario_id:r.operador_usuario_id||null, status: r.fluxo==='rascunho' ? 'em_correcao' : r.fluxo,
         lancamento: paraServidor(r), frota_rdo_id: r.frota_rdo_id ?? null };
@@ -880,6 +921,7 @@ const Sinc = {
     try {
       const { data } = await sb.auth.getSession();
       if (!data.session) { if (!silencioso) toast('Sua sessão expirou. Saia e entre de novo pra enviar.', 'erro'); return; }
+      await MinhaAssinatura.enviar().catch(()=>{});
       const e1 = await this.empurrar();
       await this.puxar();
       let foram = 0;
@@ -983,6 +1025,10 @@ function fmtHoraCompleta(isoDt){ return new Date(isoDt).toLocaleString('pt-BR',{
 function fmtNum(v, dec){ if (v==null || isNaN(v)) return '—'; return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:dec||0, maximumFractionDigits:dec==null?1:dec}); }
 function fmtR$(v){ return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Foto cadastrada no tipo do equipamento (gestão de frota); sem foto, o ícone
+function iconeEquip(e){
+  return `<span class="equip-ic">${esc(e?.icone||'🚜')}${e?.foto ? `<img src="${esc(e.foto)}" alt="" loading="lazy" onerror="this.remove()"/>` : ''}</span>`;
+}
 function nomeEquip(e){ return e ? e.descricao : 'Máquina fora da lista'; }
 function idEquip(e){ return e ? (e.prefixo || e.placa || '') : ''; }
 function ehKm(e){ return e && e.tipo_franquia==='km'; }
@@ -1250,7 +1296,7 @@ async function iniciarLogado(primeiraVez){
     }
     try {
       telaMensagem('<span class="spinner"></span> Baixando obras e máquinas');
-      await comTempo(Promise.all([Repo.atualizarCatalogo(), Repo.atualizarServidor()]), 25000);
+      await comTempo(Promise.all([Repo.atualizarCatalogo(), Repo.atualizarServidor(), MinhaAssinatura.carregarDoSistema().catch(()=>{})]), 25000);
     } catch (e) {
       if (!Repo.temCatalogo()) { telaMensagem(`Não foi possível baixar as obras e máquinas.<br/><small>${esc(traduzErro(e))}</small><br/><br/>
         <button class="btn" onclick="iniciarLogado()">Tentar de novo</button><br/><button class="btn btn-secundario" onclick="sair(true)">Sair</button>`); return; }
@@ -1361,7 +1407,7 @@ function renderHome(){
       html += `<button class="card card-rdo ${cls} ${travado(r)?'travado':''}" onclick="abrirRdo('${r.id}')">
         <div class="card-topo-linha">${seloRdo(r)}</div>
         <div class="card-linha">
-          <span class="equip-ic">${e?.icone||'🚜'}</span>
+          ${iconeEquip(e)}
           <div style="flex:1;min-width:0"><div class="card-titulo">${esc(nomeEquip(e))}</div>
             <div class="card-sub">${esc(juntar(idEquip(e), r.operador ? 'operador '+r.operador : '', r.origem==='operador' && ehApontador() ? 'lançado pelo operador' : ''))}</div></div>
           <span class="card-seta"><svg class="ic"><use href="#i-seta"/></svg></span>
@@ -1393,6 +1439,7 @@ function abrirTrocaObra(titulo){
 function abrirMenu(){
   const ops = [
     { valor:'atualizar', ic:'🔄', rotulo:'Atualizar dados do sistema', sub: online() ? 'Obras, máquinas, listas e lançamentos' : 'Precisa de internet' },
+    { valor:'assinatura', ic:'✍️', rotulo:'Minha assinatura', sub:'Ver ou refazer a assinatura salva' },
     { valor:'recarregar', ic:'🧹', rotulo:'Recarregar lançamentos do sistema', sub:'Apaga as cópias do celular e baixa de novo' },
     { valor:'sobre', ic:'ℹ️', rotulo:'Sobre o app', sub:'Versão '+CONFIG.VERSAO_APP },
     { valor:'sair', ic:'🚪', rotulo:'Sair', sub:juntar(sessao?.nome, sessao?.papel==='operador'?'operador':'apontador'), perigo:true },
@@ -1405,6 +1452,7 @@ function abrirMenu(){
     }
     if (v==='sair') sair();
     if (v==='recarregar') recarregarDoSistema();
+    if (v==='assinatura') verMinhaAssinatura();
     if (v==='sobre') abrirModal('Sobre o app', `<dl class="lista-def">
       <div><dt>Versão</dt><dd>${CONFIG.VERSAO_APP}</dd></div>
       <div><dt>Usuário</dt><dd>${esc(sessao?.nome||'—')}</dd></div>
@@ -1521,7 +1569,7 @@ function renderRdo(){
 }
 function resumoEquipHtml(){
   const e = Repo.equipamento(rdo.equipamento_id); if (!e) return '';
-  return `<div class="resumo-equip"><span class="equip-ic">${e.icone||'🚜'}</span><div style="flex:1;min-width:0">
+  return `<div class="resumo-equip">${iconeEquip(e)}<div style="flex:1;min-width:0">
     <div class="card-titulo">${esc(e.descricao)}</div><div class="card-sub">${esc(juntar(idEquip(e), fmtData(rdo.data,true), ehOperador() ? Repo.obra(e.obra_id)?.nome : ''))}</div></div></div>`;
 }
 
@@ -1540,7 +1588,7 @@ function passoMaquina(){
     ${forns.length>1 && ehApontador() ? `<div class="filtros"><button class="chip-filtro ${!filtroForn?'ativo':''}" onclick="filtroForn='';renderRdo()">Todos os fornecedores</button>
       ${forns.map(f=>`<button class="chip-filtro ${filtroForn===f?'ativo':''}" onclick="filtroForn='${f}';renderRdo()">${esc(Repo.fornecedor(f).razao_social)}</button>`).join('')}</div>` : ''}
     <div id="lista-equip">${lista.length ? lista.map(e=>`<button class="card ${rdo.equipamento_id===e.id?'selecionado':''}" onclick="escolherEquip('${e.id}')">
-      <div class="card-linha"><span class="equip-ic">${e.icone||'🚜'}</span>
+      <div class="card-linha">${iconeEquip(e)}
         <div style="flex:1;min-width:0"><div class="card-titulo">${esc(e.descricao)}</div>
           <div class="card-sub">${esc(juntar(idEquip(e), Repo.fornecedor(e.fornecedor_id).razao_social, ehOperador() ? Repo.obra(e.obra_id)?.nome : ''))}</div></div>
         <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
@@ -1970,27 +2018,126 @@ function pegarLocalizacao(){
       { enableHighAccuracy:true, timeout:12000, maximumAge:120000 });
   });
 }
-// Bottom sheet com o quadro de assinatura. Cada pessoa assina só a própria.
-function abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar){
-  abrirModal(titulo, `<div class="assin-sub" style="margin-bottom:10px">${esc(sessao.nome)}${sessao.matricula?', matrícula '+esc(sessao.matricula):''}</div>
-    <div class="pad-wrap"><canvas id="pad-modal" aria-label="Área de assinatura"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
+// ---- Assinatura salva: cadastrada uma vez, aplicada em cada lançamento ----
+const MinhaAssinatura = {
+  chave(){ return 'assinatura_'+sessao.id; },
+  async obter(){ return await BD.pegar('meta', this.chave()); },
+  async carregarDoSistema(){
+    const { data, error } = await sb.from('frota_assinatura_salva').select('imagem,consentimento_em,atualizado_em').eq('usuario_id', sessao.id).maybeSingle();
+    if (error) return;
+    const local = await this.obter();
+    if (local && local.pendente) return this.enviar();          // a do celular ainda não subiu
+    if (data) await BD.gravar('meta', data, this.chave());
+  },
+  async salvar(imagem){
+    const agora = new Date().toISOString();
+    const a = { imagem, consentimento_em: agora, atualizado_em: agora, pendente: true };
+    await BD.gravar('meta', a, this.chave());
+    await this.enviar();
+    return a;
+  },
+  async enviar(){
+    const a = await this.obter(); if (!a || !a.pendente || !online()) return;
+    const { error } = await sb.from('frota_assinatura_salva').upsert({ usuario_id:sessao.id, imagem:a.imagem, consentimento_em:a.consentimento_em, atualizado_em:a.atualizado_em });
+    if (!error) { a.pendente = false; await BD.gravar('meta', a, this.chave()); }
+  },
+};
+function abrirCadastroAssinatura(depois){
+  abrirModal('Cadastre sua assinatura', `<div class="passo-desc">Você faz sua assinatura uma vez só. Depois, pra assinar cada lançamento, basta tirar uma selfie.</div>
+    <div class="pad-wrap"><canvas id="pad-cad" aria-label="Área de assinatura"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
       <button class="pad-limpar" onclick="window._pad.limpar()">Limpar</button></div>
-    <div class="declaracao">${esc(declaracao)}</div>
-    <div class="erro-msg" id="pad-erro" style="margin-top:10px"></div>
-    <button class="btn" id="pad-btn" style="margin-top:12px">${esc(rotuloBtn)}</button>`);
+    <label class="consentimento"><input type="checkbox" id="cad-consent"/><span>Concordo que, ao assinar um lançamento, o app use esta assinatura e registre uma foto minha (selfie), a data, a hora e a localização, para comprovar que fui eu quem assinou. A foto fica guardada de forma privada e só pode ser vista pelo apontador e pelo escritório.</span></label>
+    <div class="erro-msg" id="cad-erro" style="margin-top:10px"></div>
+    <button class="btn" id="cad-btn" style="margin-top:12px">Salvar assinatura</button>`);
   requestAnimationFrame(()=>{
-    window._pad = new PadAssinatura(document.getElementById('pad-modal'));
-    document.getElementById('pad-btn').onclick = async ()=>{
-      if (!window._pad.valida()) { document.getElementById('pad-erro').textContent = 'Faça sua assinatura no quadro.'; return; }
-      const btn = document.getElementById('pad-btn'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Registrando';
-      try { await aoAssinar(window._pad.imagem()); fecharModal(); }
-      catch (e) { btn.disabled = false; btn.textContent = rotuloBtn; document.getElementById('pad-erro').textContent = e.message==='sem_crypto' ? 'Abra o app pelo endereço https pra assinar.' : (e.message || 'Não foi possível assinar.'); }
+    window._pad = new PadAssinatura(document.getElementById('pad-cad'));
+    document.getElementById('cad-btn').onclick = async ()=>{
+      if (!window._pad.valida()) { document.getElementById('cad-erro').textContent = 'Faça sua assinatura no quadro.'; return; }
+      if (!document.getElementById('cad-consent').checked) { document.getElementById('cad-erro').textContent = 'Marque que você concorda pra continuar.'; return; }
+      await MinhaAssinatura.salvar(window._pad.imagem());
+      toast('Assinatura salva', 'sucesso');
+      if (depois) depois(); else fecharModal();
     };
   });
 }
-async function montarAssinatura(rec, imagem){
+async function verMinhaAssinatura(){
+  const a = await MinhaAssinatura.obter();
+  abrirModal('Minha assinatura', a ? `<div class="assin-img" style="margin-bottom:10px"><img src="${a.imagem}" alt="Sua assinatura"/></div>
+      <div class="passo-desc">Salva em ${esc(fmtHoraCompleta(a.atualizado_em))}${a.pendente?' (ainda não enviada ao sistema)':''}. Refazer não altera os lançamentos já assinados.</div>
+      <button class="btn btn-secundario" onclick="abrirCadastroAssinatura()">Refazer assinatura</button>`
+    : `<div class="passo-desc">Você ainda não cadastrou sua assinatura.</div><button class="btn" onclick="abrirCadastroAssinatura()">Cadastrar agora</button>`);
+}
+// Selfie em baixa resolução (~320px, JPEG): leve e suficiente pra reconhecer o rosto
+function reduzirFoto(arquivo){
+  return new Promise((ok, falha)=>{
+    const url = URL.createObjectURL(arquivo), im = new Image();
+    im.onload = ()=>{
+      const max = 320, f = Math.min(1, max/Math.max(im.width, im.height));
+      const c = document.createElement('canvas'); c.width = Math.round(im.width*f); c.height = Math.round(im.height*f);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      ok(c.toDataURL('image/jpeg', 0.6));
+    };
+    im.onerror = ()=>{ URL.revokeObjectURL(url); falha(new Error('Não foi possível ler a foto.')); };
+    im.src = url;
+  });
+}
+// Assinar: assinatura salva + selfie. Sem câmera, dá pra assinar desenhando.
+async function abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar){
+  const salva = await MinhaAssinatura.obter();
+  if (!salva) return abrirCadastroAssinatura(()=>abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar));
+  window._selfie = null; window._modoDesenho = false;
+  abrirModal(titulo, `<div class="assin-sub" style="margin-bottom:10px">${esc(sessao.nome)}${sessao.matricula?', matrícula '+esc(sessao.matricula):''}</div>
+    <div id="assin-selfie-box">
+      <div class="selfie-linha">
+        <div class="selfie-foto" id="selfie-prev"><span>📷</span></div>
+        <div style="flex:1;min-width:0"><div class="assin-img"><img src="${salva.imagem}" alt="Sua assinatura salva"/></div><div class="ajuda" style="margin:6px 0 0">Sua assinatura salva</div></div>
+      </div>
+      <label class="btn btn-secundario" style="margin-top:12px;cursor:pointer" id="selfie-btn">📷 Tirar selfie<input type="file" accept="image/*" capture="user" hidden onchange="receberSelfie(this)"/></label>
+    </div>
+    <div id="assin-desenho-box" style="display:none">
+      <div class="pad-wrap"><canvas id="pad-modal" aria-label="Área de assinatura"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
+        <button class="pad-limpar" onclick="window._pad.limpar()">Limpar</button></div>
+    </div>
+    <div class="declaracao">${esc(declaracao)}</div>
+    <button class="link-acao" id="assin-alternar" onclick="alternarModoDesenho()">Sem câmera? Assinar desenhando</button>
+    <div class="erro-msg" id="pad-erro" style="margin-top:10px"></div>
+    <button class="btn" id="pad-btn" style="margin-top:12px">${esc(rotuloBtn)}</button>`);
+  document.getElementById('pad-btn').onclick = async ()=>{
+    const erro = document.getElementById('pad-erro');
+    let dados;
+    if (window._modoDesenho) {
+      if (!window._pad || !window._pad.valida()) { erro.textContent = 'Faça sua assinatura no quadro.'; return; }
+      dados = { imagem: window._pad.imagem(), selfie:null, metodo:'desenho' };
+    } else {
+      if (!window._selfie) { erro.textContent = 'Tire a selfie pra assinar.'; return; }
+      dados = { imagem: salva.imagem, selfie: window._selfie, metodo:'assinatura_salva_e_selfie' };
+    }
+    const btn = document.getElementById('pad-btn'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Registrando';
+    try { await aoAssinar(dados); fecharModal(); }
+    catch (e) { btn.disabled = false; btn.textContent = rotuloBtn; erro.textContent = e.message==='sem_crypto' ? 'Abra o app pelo endereço https pra assinar.' : (e.message || 'Não foi possível assinar.'); }
+  };
+}
+async function receberSelfie(input){
+  const arq = input.files && input.files[0]; if (!arq) return;
+  try {
+    window._selfie = await reduzirFoto(arq);
+    document.getElementById('selfie-prev').innerHTML = `<img src="${window._selfie}" alt="Sua selfie"/>`;
+    document.getElementById('selfie-btn').firstChild.textContent = '📷 Tirar outra';
+    document.getElementById('pad-erro').textContent = '';
+  } catch (e) { document.getElementById('pad-erro').textContent = e.message; }
+  input.value = '';
+}
+function alternarModoDesenho(){
+  window._modoDesenho = !window._modoDesenho;
+  document.getElementById('assin-selfie-box').style.display = window._modoDesenho ? 'none' : '';
+  document.getElementById('assin-desenho-box').style.display = window._modoDesenho ? '' : 'none';
+  document.getElementById('assin-alternar').textContent = window._modoDesenho ? 'Usar assinatura salva e selfie' : 'Sem câmera? Assinar desenhando';
+  if (window._modoDesenho && !window._pad?.c?.isConnected) requestAnimationFrame(()=>{ window._pad = new PadAssinatura(document.getElementById('pad-modal')); });
+}
+async function montarAssinatura(rec, dados){
   const [gps, hash] = await Promise.all([pegarLocalizacao(), sha256(conteudoCanonico(rec))]);
-  return { usuario_id:sessao.id, nome:sessao.nome, matricula:sessao.matricula||'', email:sessao.email||'', imagem,
+  return { usuario_id:sessao.id, nome:sessao.nome, matricula:sessao.matricula||'', email:sessao.email||'',
+    imagem:dados.imagem, metodo:dados.metodo, selfie: dados.selfie ? { local:dados.selfie } : null,
     em:new Date().toISOString(), fuso:Intl.DateTimeFormat().resolvedOptions().timeZone, gps, hash, codigo:codigoCurto(hash),
     aparelho:{ id:idAparelho(), descricao:descricaoAparelho(), versao_app:CONFIG.VERSAO_APP } };
 }
@@ -2004,8 +2151,8 @@ async function concluirEnvio(msg){
 }
 function assinarComoOperador(){
   if (verificacoes().some(a=>a.bloqueia)) { document.getElementById('as-erro').textContent = 'Há pendências na revisão.'; return; }
-  abrirAssinatura('Sua assinatura', 'Declaro que as informações deste lançamento estão corretas.', 'Assinar e enviar', async img=>{
-    rdo.assinaturas = { operador: await montarAssinatura(rdo, img), apontador:null, recusa_operador:null };
+  abrirAssinatura('Sua assinatura', 'Declaro que as informações deste lançamento estão corretas.', 'Assinar e enviar', async dados=>{
+    rdo.assinaturas = { operador: await montarAssinatura(rdo, dados), apontador:null, recusa_operador:null };
     rdo.fluxo = 'aguardando_apontador'; rdo.mensagem = ''; rdo.conflito = false; rdo.bloqueado_envio = false; registrar(rdo, 'operador assinou e enviou');
     await concluirEnvio('Enviado ao apontador');
   });
@@ -2017,8 +2164,8 @@ function assinarComoApontador(){
   let motivo = '';
   if (modo==='sem') { motivo = (document.getElementById('as-motivo')?.value||'').trim(); window._motivoSem = motivo;
     if (motivo.length<5) { document.getElementById('as-erro').textContent = 'Explique por que o operador não vai assinar.'; return; } }
-  abrirAssinatura('Sua assinatura', 'Declaro que acompanhei e registrei este lançamento.', 'Assinar', async img=>{
-    rdo.assinaturas = { operador:null, apontador: await montarAssinatura(rdo, img), recusa_operador: modo==='sem' ? { motivo, por:sessao.nome, em:new Date().toISOString() } : null };
+  abrirAssinatura('Sua assinatura', 'Declaro que acompanhei e registrei este lançamento.', 'Assinar', async dados=>{
+    rdo.assinaturas = { operador:null, apontador: await montarAssinatura(rdo, dados), recusa_operador: modo==='sem' ? { motivo, por:sessao.nome, em:new Date().toISOString() } : null };
     rdo.fluxo = modo==='app' ? 'aguardando_operador' : 'pronto'; rdo.mensagem = ''; rdo.conflito = false; rdo.bloqueado_envio = false;
     registrar(rdo, modo==='app' ? 'apontador assinou e enviou ao operador' : 'apontador assinou sem o operador', motivo);
     window._modoAssin = null; window._motivoSem = '';
@@ -2031,8 +2178,9 @@ function assinarComoApontador(){
 function blocoAssinatura(papel, a){
   if (!a) return '';
   const gps = a.gps && a.gps.lat!=null ? `<a href="https://maps.google.com/?q=${a.gps.lat},${a.gps.lng}" target="_blank" rel="noopener">${a.gps.lat}, ${a.gps.lng}</a> (±${a.gps.precisao_m} m)` : 'não registrada';
-  return `<div class="assinante"><div class="assinante-nome">${esc(a.nome)} <small>${papel}${a.matricula?', '+esc(a.matricula):''}</small></div>
-    <div class="assin-img"><img src="${a.imagem}" alt="Assinatura de ${esc(a.nome)}"/></div>
+  const foto = a.selfie ? `<div class="selfie-foto pequena" data-selfie='${esc(JSON.stringify(a.selfie))}'><span>📷</span></div>` : '';
+  return `<div class="assinante"><div class="assinante-nome">${esc(a.nome)} <small>${papel}${a.matricula?', '+esc(a.matricula):''}${a.metodo==='assinatura_salva_e_selfie'?' · assinatura salva + selfie':''}</small></div>
+    <div class="selfie-linha">${foto}<div class="assin-img" style="flex:1;min-width:0"><img src="${a.imagem}" alt="Assinatura de ${esc(a.nome)}"/></div></div>
     <div class="trilha">${esc(fmtHoraCompleta(a.em))} · local: ${gps} · ${esc(a.aparelho?.descricao||'')}<br/>Código <span class="codigo">${esc(a.codigo)}</span>
     <span class="integridade" data-hash="${esc(a.hash)}"><span class="spinner"></span></span></div></div>`;
 }
@@ -2075,7 +2223,15 @@ function painelLancamento(){
     ((r.historico||[]).length ? `<div class="secao-titulo">Histórico</div><dl class="lista-def">${r.historico.map(h=>`<div><dt>${esc(fmtHoraCompleta(h.em))}</dt><dd style="font-weight:500">${esc(h.por)}: ${esc(h.acao)}${h.motivo?' ("'+esc(h.motivo)+'")':''}</dd></div>`).join('')}</dl>` : '') +
     `<div class="barra-acao"><div class="btn-linha acoes">${botoes.join('')}</div></div>`;
 }
+async function mostrarSelfies(){
+  for (const el of document.querySelectorAll('.selfie-foto[data-selfie]')) {
+    let sf; try { sf = JSON.parse(el.dataset.selfie); } catch (e) { continue; }
+    const url = await urlDaSelfie(sf);
+    el.innerHTML = url ? `<img src="${esc(url)}" alt="Selfie"/>` : `<span title="${online()?'Foto registrada':'A foto aparece com internet'}">📷</span>`;
+  }
+}
 async function conferirIntegridade(){
+  mostrarSelfies();
   const els = document.querySelectorAll('.integridade[data-hash]'); if (!els.length) return;
   let h; try { h = await sha256(conteudoCanonico(rdo)); } catch (e) { return; }
   els.forEach(el=>{ if (el.dataset.hash===h) { el.className='integridade ok'; el.textContent=' ✓ confere'; } else { el.className='integridade erro'; el.textContent=' ⚠ conteúdo alterado depois'; } });
@@ -2093,8 +2249,8 @@ async function validar(){
     const h = await sha256(conteudoCanonico(rdo));
     if (atual.lancamento?.assinaturas?.operador?.hash!==h || rdo.assinaturas?.operador?.hash!==h) { toast('O conteúdo não confere com a assinatura do operador. Atualizando.', 'erro'); await Sinc.rodar(true); return; }
   } catch (e) { toast(e.message, 'erro'); return; }
-  abrirAssinatura('Validar e assinar', 'Declaro que conferi este lançamento com o operador.', 'Assinar e enviar ao sistema', async img=>{
-    rdo.assinaturas.apontador = await montarAssinatura(rdo, img);
+  abrirAssinatura('Validar e assinar', 'Declaro que conferi este lançamento com o operador.', 'Assinar e enviar ao sistema', async dados=>{
+    rdo.assinaturas.apontador = await montarAssinatura(rdo, dados);
     rdo.fluxo = 'pronto'; rdo.mensagem = ''; registrar(rdo, 'apontador validou e assinou');
     await concluirEnvio('Validado. Indo pro sistema');
   });
@@ -2106,8 +2262,8 @@ function devolver(){
   });
 }
 function confirmar(){
-  abrirAssinatura('Confirmar e assinar', 'Declaro que as informações deste lançamento estão corretas.', 'Assinar', async img=>{
-    rdo.assinaturas.operador = await montarAssinatura(rdo, img);
+  abrirAssinatura('Confirmar e assinar', 'Declaro que as informações deste lançamento estão corretas.', 'Assinar', async dados=>{
+    rdo.assinaturas.operador = await montarAssinatura(rdo, dados);
     rdo.fluxo = 'pronto'; rdo.mensagem = ''; registrar(rdo, 'operador confirmou e assinou');
     await concluirEnvio('Confirmado');
   });
@@ -2133,7 +2289,9 @@ async function corrigir(){
 
 /* ===================================================================== */
 /* FICHA IMPRESSA (modelo do RDO do gestão de frota, preenchido)          */
-function imprimirFicha(r){
+async function imprimirFicha(r){
+  const a0 = r.assinaturas || {};
+  const fotos = { operador: await urlDaSelfie(a0.operador?.selfie).catch(()=>null), apontador: await urlDaSelfie(a0.apontador?.selfie).catch(()=>null) };
   const e = Repo.equipamento(r.equipamento_id), o = Repo.obra(r.obra_id), g = resumoGrade(r.grade), un = unidMedidor(e);
   const a = r.assinaturas || {};
   const delta = r.horimetro_inicial!=null && r.horimetro_final!=null ? r.horimetro_final - r.horimetro_inicial : null;
@@ -2145,7 +2303,7 @@ function imprimirFicha(r){
       ${usados.map(x=>`<tr><td class="c">${esc(x.it.codigo||'')}</td><td><span class="cor" style="background:${campo==='evento'?corEvento(x.it.nome):'#888'}"></span>${esc(x.it.nome)}</td><td>${esc(x.f.texto)}</td><td class="n">${x.f.horas}h</td></tr>`).join('')}</tbody></table>`;
   };
   const tl = HORAS.map((k,h)=>{ const v = r.grade[k]; return `<div class="tl-c" style="background:${v&&v.evento?corEvento(v.evento):'#fff'}"><span>${String(h).padStart(2,'0')}</span></div>`; }).join('');
-  const sig = (rot, s, extra)=>`<div class="sig"><label>${rot}</label>${s ? `<img src="${s.imagem}" alt=""/><div class="sig-n">${esc(s.nome)}${s.matricula?' · '+esc(s.matricula):''}</div><div class="sig-t">${esc(fmtHoraCompleta(s.em))}${s.gps?.lat!=null?' · '+s.gps.lat+', '+s.gps.lng:''}<br/>Código ${esc(s.codigo)}</div>` : `<div class="sig-vazio">${esc(extra||'')}</div>`}</div>`;
+  const sig = (rot, s, extra, foto)=>`<div class="sig"><label>${rot}</label>${s ? `<div class="sig-img">${foto?`<img class="sig-selfie" src="${esc(foto)}" alt=""/>`:''}<img src="${s.imagem}" alt=""/></div><div class="sig-n">${esc(s.nome)}${s.matricula?' · '+esc(s.matricula):''}</div><div class="sig-t">${esc(fmtHoraCompleta(s.em))}${s.gps?.lat!=null?' · '+s.gps.lat+', '+s.gps.lng:''}<br/>Código ${esc(s.codigo)}</div>` : `<div class="sig-vazio">${esc(extra||'')}</div>`}</div>`;
   const html = `<div class="page">
     <div class="hdr"><div class="hdr-logo">REGISTRO<br>DIÁRIO DE<br>OPERAÇÃO</div>
       <div class="hdr-main"><div class="title">RDO — RELATÓRIO DIÁRIO DE OPERAÇÃO DE EQUIPAMENTO</div><div class="sub">${esc(o?.nome||'')}</div></div>
@@ -2171,15 +2329,17 @@ function imprimirFicha(r){
     </div>
     ${r.ajustes.length ? `<div class="sec">4. Acréscimos e descontos</div><table class="tg"><tbody>${r.ajustes.map(x=>`<tr><td>${x.tipo==='acrescimo'?'Acréscimo':'Desconto'}</td><td>${esc(x.descricao)}</td><td class="n">${fmtR$(x.valor)}</td></tr>`).join('')}</tbody></table>` : ''}
     <div class="sigs">
-      ${sig('Operador / motorista', a.operador, a.recusa_operador ? 'Não assinou: '+a.recusa_operador.motivo : 'Aguardando assinatura')}
-      ${sig('Encarregado / fiscal de campo', a.apontador, 'Aguardando assinatura')}
+      ${sig('Operador / motorista', a.operador, a.recusa_operador ? 'Não assinou: '+a.recusa_operador.motivo : 'Aguardando assinatura', fotos.operador)}
+      ${sig('Encarregado / fiscal de campo', a.apontador, 'Aguardando assinatura', fotos.apontador)}
       ${sig('Responsável técnico', null, '')}
     </div>
     <div class="ft"><span>RDO digital — SIGECON Produtividade da Frota${r.frota_rdo_id!=null?' · registro '+esc(r.frota_rdo_id):''}</span><span>Assinado eletronicamente no app de campo · verificação pelo código de conferência</span></div>
   </div>`;
   const el = document.getElementById('impressao'); el.innerHTML = html;
   document.title = 'RDO ' + juntar(idEquip(e)||e?.descricao, fmtDataCurta(r.data));
-  setTimeout(()=>{ window.print(); document.title = 'Produtividade da Frota'; }, 120);
+  // espera as imagens carregarem antes de abrir a impressão
+  await Promise.all([...el.querySelectorAll('img')].map(im=>im.complete ? 0 : new Promise(ok=>{ im.onload = im.onerror = ok; setTimeout(ok, 4000); })));
+  setTimeout(()=>{ window.print(); document.title = 'Produtividade da Frota'; }, 60);
 }
 
 /* ===================================================================== */
