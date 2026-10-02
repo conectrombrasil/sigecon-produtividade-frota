@@ -68,7 +68,7 @@ Dá para lançar e assinar sem sinal. Tudo fica no celular e sobe sozinho quando
 
 ## Publicar uma nova versão
 
-Ao alterar `index.html` ou os ícones, aumente a `VERSAO` em `sw.js` (ex: `fc-v3.2.0` → `fc-v3.1.1`). Os celulares mostram o aviso **Nova versão do app**.
+Ao alterar `index.html` ou os ícones, aumente a `VERSAO` em `sw.js` (ex: `fc-v3.2.1` → `fc-v3.1.1`). Os celulares mostram o aviso **Nova versão do app**.
 
 ## Outros apps no mesmo GitHub
 

@@ -585,7 +585,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.2.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.2.1', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -744,10 +744,33 @@ const Repo = {
     }
     this.servidor = data || [];
     await BD.gravar('meta', this.servidor, 'servidor');
+    await this.conferirExcluidos();
     for (const r of this._rdos) {
       const sv = r.frota_rdo_id!=null && this.servidor.find(x=>x.id===r.frota_rdo_id);
       if (sv && (sv.status_medicao||'nao_medido')!==(r.status_medicao||'nao_medido')) { r.status_medicao = sv.status_medicao||'nao_medido'; await this.salvar(r, false); }
     }
+  },
+
+  // Lançamento que o escritório apagou no SIGECON: some do celular e libera o dia
+  async conferirExcluidos(){
+    const desde = hojeISO(-CONFIG.DIAS_HISTORICO);
+    const noSistema = new Set(this.servidor.map(x=>String(x.id)));
+    let suspeitos = this._rdos.filter(r=>r.fluxo==='no_sistema' && r.frota_rdo_id!=null && r.data>=desde && !noSistema.has(String(r.frota_rdo_id)));
+    if (!suspeitos.length) return 0;
+    if (ehApontador()) {
+      // confirma um a um antes de cancelar (a lista geral tem limite de linhas)
+      const { data, error } = await sb.from('frota_rdo').select('id').in('id', suspeitos.map(r=>r.frota_rdo_id));
+      if (error) return 0;
+      const existem = new Set((data||[]).map(x=>String(x.id)));
+      suspeitos = suspeitos.filter(r=>!existem.has(String(r.frota_rdo_id)));
+    }
+    for (const r of suspeitos) {
+      r.fluxo = 'cancelado'; r.excluido_no_sistema = true;
+      (r.historico = r.historico || []).push({ em:new Date().toISOString(), por:'sistema', acao:'registro apagado no SIGECON' });
+      await this.salvar(r, ehApontador());   // apontador avisa os outros celulares
+    }
+    if (suspeitos.length) toast(suspeitos.length>1 ? suspeitos.length+' lançamentos foram apagados no sistema' : 'Um lançamento foi apagado no sistema', 'erro');
+    return suspeitos.length;
   },
 
   obras(){ return this.cat.obras; },
@@ -862,6 +885,7 @@ const Sinc = {
       let foram = 0;
       if (ehApontador()) { foram = await this.finalizar(); if (foram) await this.empurrar(); }
       await Repo.atualizarServidor().catch(()=>{});
+      if (Repo.aEnviar().length) await this.empurrar();   // ex: cancelamentos de registros apagados no SIGECON
       if (foram) toast(foram>1 ? foram+' lançamentos gravados no sistema' : 'Lançamento gravado no sistema', 'sucesso');
       else if (e1.ok && !silencioso) toast('Enviado', 'sucesso');
       if (e1.ultimoErro && !silencioso) toast('Não deu pra enviar: '+traduzErro(e1.ultimoErro), 'erro');
