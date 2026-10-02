@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>Produtividade em Campo</title>
+<title>Produtividade da Frota</title>
 <meta name="theme-color" content="#0B1929"/>
 <link rel="manifest" href="manifest.json"/>
 <link rel="icon" href="icone.svg" type="image/svg+xml"/>
 <link rel="apple-touch-icon" href="icone-180.png"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-title" content="Produtividade"/>
+<meta name="apple-mobile-web-app-title" content="Prod. Frota"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<script src="supabase.js"></script>
 <script>
 (function(){
   let t = null;
@@ -401,6 +402,7 @@
   .trilha a{color:var(--blue2);}
   .codigo{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.4px;color:var(--text);}
   .integridade{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;margin-top:6px;}
+  .card-rdo.sy-conflito::before{background:var(--red);}
   .integridade.ok{color:var(--ok-txt);} .integridade.erro{color:var(--err-txt);}
 </style>
 </head>
@@ -423,22 +425,22 @@
 <div class="tela tela-centro ativa" id="tela-carregando">
   <div class="conteudo">
     <img class="logo-app" src="icone.svg" alt=""/>
-    <div class="logo-titulo">Produtividade em Campo</div>
+    <div class="logo-titulo">Produtividade da Frota</div>
     <div class="logo-sub" id="carregando-msg"><span class="spinner"></span></div>
   </div>
 </div>
 
-<!-- ================= IDENTIFICAÇÃO (primeiro uso) ================= -->
-<div class="tela tela-centro" id="tela-id">
+<!-- ================= LOGIN ================= -->
+<div class="tela tela-centro" id="tela-login">
   <div class="conteudo">
     <img class="logo-app" src="icone.svg" alt=""/>
-    <div class="logo-titulo">Produtividade em Campo</div>
-    <div class="logo-sub">Antes de começar, diga quem vai lançar neste celular. Seu nome aparece nas assinaturas.</div>
-    <div class="campo"><span class="rotulo">Seu nome *</span><input type="text" id="id-nome" autocomplete="name" enterkeyhint="next"/></div>
-    <div class="campo"><span class="rotulo">Matrícula</span><input type="text" id="id-matricula" inputmode="numeric" enterkeyhint="next"/></div>
-    <div class="campo"><span class="rotulo">Obra *</span><select id="id-obra"></select></div>
-    <div class="erro-msg" id="id-erro"></div>
-    <button class="btn" onclick="salvarIdentificacao()">Começar</button>
+    <div class="logo-titulo">Produtividade da Frota</div>
+    <div class="logo-sub">SIGECON. Entre com o mesmo e-mail e senha do sistema.</div>
+    <div class="campo"><input type="email" id="login-email" placeholder="E-mail" autocomplete="username" inputmode="email" enterkeyhint="next" onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('login-senha').focus();}"/></div>
+    <div class="campo"><input type="password" id="login-senha" placeholder="Senha" autocomplete="current-password" enterkeyhint="go" onkeydown="if(event.key==='Enter'){event.preventDefault();fazerLogin();}"/></div>
+    <div class="erro-msg" id="login-erro"></div>
+    <button class="btn" id="btn-login" onclick="fazerLogin()">Entrar</button>
+    <div class="ajuda" style="text-align:center;margin-top:14px">Na primeira vez é preciso internet. Depois o app abre mesmo sem sinal.</div>
   </div>
 </div>
 
@@ -446,7 +448,7 @@
 <div class="tela" id="tela-home">
   <div class="topo">
     <button class="topo-textos" onclick="abrirTrocaObra()" aria-label="Trocar obra">
-      <div class="topo-titulo">Produtividade</div>
+      <div class="topo-titulo">Produtividade da Frota</div>
       <div class="topo-sub" id="home-sub"></div>
     </button>
     <button class="topo-icone" onclick="alternarTema()" aria-label="Alternar tema claro/escuro"><svg class="ic ic-lua"><use href="#i-sol"/></svg><svg class="ic ic-sol"><use href="#i-lua"/></svg></button>
@@ -487,18 +489,14 @@
 
 <script>
 /* =====================================================================
-   CONFIGURAÇÃO
-   ENDPOINT: quando houver backend, coloque aqui a URL que recebe cada
-   lançamento (POST com o JSON do lançamento). Vazio = sem servidor:
-   os lançamentos ficam no celular e saem pelo botão "Exportar".
+   CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = {
-  VERSAO_APP: '1.0.0',
-  ENDPOINT: '',
-  HEADERS: {},
-};
-// Usado só na prévia: se preenchido, dispensa o catalogo.json
-const CATALOGO_EMBUTIDO = null;
+const CONFIG = { VERSAO_APP: '2.0.0', DIAS_HISTORICO: 45 };
+const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZnJ5Ynl4Y2Fta3V5ZXd6eW5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyODQzNTcsImV4cCI6MjA5MTg2MDM1N30.DWzvf6tS-0TQ_zfXaq3MKE5eCwIz0gMyidAPBs-YuJ0';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'sb-frota-campo-auth' } });
+let sessao = null;   // { id, email, nome, matricula }
 
 /* =====================================================================
    BANCO LOCAL (IndexedDB)
@@ -535,49 +533,109 @@ const BD = {
 };
 
 /* =====================================================================
-   REPO — única porta de acesso aos dados. Mantém tudo em memória pra
-   leitura rápida e grava cada alteração no IndexedDB.
-   Pra ligar no backend, mexa só em carregarCatalogo() e enviarRdo().
+   REPO — única porta de acesso aos dados.
+   Leitura: mesmas tabelas do módulo de gestão de frota. Fica uma cópia no
+   celular (IndexedDB) pra funcionar sem sinal.
+   Gravação: frota_rdo + frota_rdo_ajustes, igual ao salvarRDO do sistema.
    ===================================================================== */
+const ICONE_CATEGORIA = { maquina_pesada:'🚜', linha_amarela:'🚜', veiculo:'🚛', linha_branca:'🚐', equipamento:'⚙️', ferramenta:'🔧', outro:'🚜' };
+const CORES_EXTRA = ['#C77DBF','#4FC1C8','#D98E4A','#9AAE4F','#E07AA0','#7E9BD6'];
+function corDoEvento(ev, i){
+  if (ev.nome==='Em Atividade') return '#2ECC8A';
+  if (ev.chave_fixa==='chuva') return '#8B7CF0';
+  if (ev.chave_fixa==='falta_operador') return '#E0A830';
+  if (ev.chave_fixa==='quebra_manutencao') return '#E05555';
+  if (ev.chave_fixa==='pausa_refeicao') return '#8A9BB0';
+  if (/dispos/i.test(ev.nome)) return '#5AA6EE';
+  return CORES_EXTRA[i % CORES_EXTRA.length];
+}
+function curtoDoEvento(ev){
+  if (ev.nome==='Em Atividade') return 'Ativ.';
+  if (ev.chave_fixa==='pausa_refeicao') return 'Pausa';
+  if (ev.chave_fixa==='falta_operador') return 'S/ oper.';
+  if (ev.chave_fixa==='quebra_manutencao') return 'Quebra';
+  const p = ev.nome.split(/\s+/)[0]; return p.length>8 ? p.slice(0,7)+'.' : p;
+}
+
 const Repo = {
-  cat: null, _rdos: [],
+  cat: null, _rdos: [], servidor: [],
   async iniciar(){
     await BD.abrir();
     this._rdos = await BD.todos('rdos') || [];
-    await this.carregarCatalogo();
+    this.cat = await BD.pegar('meta', 'catalogo') || null;
+    this.servidor = await BD.pegar('meta', 'servidor') || [];
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
   },
-  async carregarCatalogo(){
-    if (CATALOGO_EMBUTIDO) { this.cat = CATALOGO_EMBUTIDO; return; }
-    try {
-      const r = await fetch('catalogo.json', { cache:'no-cache' });
-      if (!r.ok) throw new Error('http '+r.status);
-      this.cat = await r.json();
-      await BD.gravar('meta', this.cat, 'catalogo');
-    } catch (e) {
-      this.cat = await BD.pegar('meta', 'catalogo');
-      if (!this.cat) throw new Error('sem_catalogo');
+  temCatalogo(){ return !!(this.cat && this.cat.obras); },
+
+  // Baixa obras, máquinas mobilizadas e listas — as mesmas consultas do módulo de frota
+  async atualizarCatalogo(){
+    const res = await Promise.all([
+      sb.from('obras').select('id,nome').eq('status','ativa').order('nome'),
+      sb.from('equipamentos').select('*,frota_tipos!equipamentos_frota_tipo_id_fkey(nome,categoria)').eq('ativo',true).order('descricao'),
+      sb.from('frota_rdo_listas').select('*').eq('ativo',true).order('ordem'),
+      sb.from('fornecedores').select('id,razao_social').order('razao_social'),
+      sb.from('contrato_ativos').select('equipamento_id,status,contratos(obra_id)').eq('status','ativo').not('equipamento_id','is',null),
+    ]);
+    const erro = res.find(r=>r.error); if (erro) throw erro.error;
+    const [obras, equips, listas, forns, ativos] = res.map(r=>r.data||[]);
+    const mob = {}; ativos.forEach(a=>{ if (a.equipamento_id && a.contratos?.obra_id) mob[a.equipamento_id] = a.contratos.obra_id; });
+    const eventos = listas.filter(l=>l.tipo==='evento');
+    this.cat = {
+      versao: new Date().toISOString(),
+      obras,
+      fornecedores: forns,
+      equipamentos: equips.filter(e=>mob[e.id]).map(e=>({
+        id:e.id, obra_id:mob[e.id], fornecedor_id:e.fornecedor_id, descricao:e.descricao,
+        prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
+        icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜',
+      })),
+      eventos: eventos.map((ev,i)=>({ nome:ev.nome, chave_fixa:ev.chave_fixa||null, cor:corDoEvento(ev,i), curto:curtoDoEvento(ev) })),
+      atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome })),
+      locais: listas.filter(l=>l.tipo==='local').map(l=>({ obra_id:l.obra_id, nome:l.nome })),
+      combustiveis: ['Diesel S10','Diesel S500','Gasolina','Outro'],
+    };
+    await BD.gravar('meta', this.cat, 'catalogo');
+  },
+  // Lançamentos que já existem no sistema (escritório ou outros celulares) — evita duplicar
+  async atualizarServidor(){
+    const desde = hojeISO(-CONFIG.DIAS_HISTORICO);
+    const { data, error } = await sb.from('frota_rdo').select('id,obra_id,equipamento_id,data,horimetro_final,status_medicao')
+      .gte('data', desde).order('data', { ascending:false }).limit(5000);
+    if (error) throw error;
+    this.servidor = data || [];
+    await BD.gravar('meta', this.servidor, 'servidor');
+    for (const r of this._rdos) {
+      const sv = r.servidor_id && this.servidor.find(x=>x.id===r.servidor_id);
+      if (sv && (sv.status_medicao||'nao_medido')!==(r.status_medicao||'nao_medido')) { r.status_medicao = sv.status_medicao||'nao_medido'; await this.salvar(r); }
     }
   },
 
   obras(){ return this.cat.obras; },
   obra(id){ return this.cat.obras.find(o=>o.id===id); },
   fornecedor(id){ return this.cat.fornecedores.find(f=>f.id===id) || { razao_social:'—' }; },
-  equipamentos(obraId){ return this.cat.equipamentos.filter(e=>e.obra_id===obraId && e.ativo!==false); },
+  equipamentos(obraId){ return this.cat.equipamentos.filter(e=>e.obra_id===obraId); },
   equipamento(id){ return this.cat.equipamentos.find(e=>e.id===id); },
   eventos(){ return this.cat.eventos; },
   evento(nome){ return this.cat.eventos.find(e=>e.nome===nome); },
   atividades(obraId){ return this.cat.atividades.filter(a=>a.obra_id===obraId).map(a=>a.nome); },
   locais(obraId){ return this.cat.locais.filter(a=>a.obra_id===obraId).map(a=>a.nome); },
-  combustiveis(){ return this.cat.combustiveis || ['Diesel S10','Diesel S500','Gasolina','Outro']; },
+  combustiveis(){ return this.cat.combustiveis; },
 
   rdos(){ return this._rdos; },
   rdo(id){ return this._rdos.find(r=>r.id===id); },
+  // Registro do servidor que não é um dos lançamentos deste celular
+  doServidor(equipId, data, rdoLocal){
+    return this.servidor.find(s=>s.equipamento_id===equipId && s.data===data && !(rdoLocal && rdoLocal.servidor_id===s.id));
+  },
   doDia(equipId, data, excetoId){ return this._rdos.find(r=>r.equipamento_id===equipId && r.data===data && r.id!==excetoId); },
+  lancadoNoDia(equipId, data, rdoLocal){
+    return !!(this.doDia(equipId, data, rdoLocal?.id) || this.doServidor(equipId, data, rdoLocal));
+  },
   ultimoMedidor(equipId, antesDe){
-    const ant = this._rdos.filter(r=>r.equipamento_id===equipId && r.data<antesDe && r.horimetro_final!=null)
+    const todos = [...this._rdos, ...this.servidor].filter(r=>r.equipamento_id===equipId && r.data<antesDe && r.horimetro_final!=null)
       .sort((a,b)=>b.data.localeCompare(a.data));
-    return ant[0] ? { valor: ant[0].horimetro_final, data: ant[0].data } : null;
+    return todos[0] ? { valor: todos[0].horimetro_final, data: todos[0].data } : null;
   },
   async salvar(rdo){
     rdo.editado_em = new Date().toISOString();
@@ -589,24 +647,63 @@ const Repo = {
   },
   async excluir(id){ this._rdos = this._rdos.filter(r=>r.id!==id); await BD.apagar('rdos', id); },
   aEnviar(){ return this._rdos.filter(r=>r._sync==='pendente'); },
-  naoExportados(){ return this._rdos.filter(r=>r._sync==='pendente' && !r.exportado_em); },
 
-  // Envia um lançamento ao servidor. Hoje: POST genérico em CONFIG.ENDPOINT.
-  // Com Supabase: upsert em frota_rdo + manutenções/abastecimentos/ajustes.
-  async enviarRdo(rdo){
-    const r = await fetch(CONFIG.ENDPOINT, { method:'POST',
-      headers: Object.assign({ 'Content-Type':'application/json' }, CONFIG.HEADERS),
-      body: JSON.stringify(rdo) });
-    if (!r.ok) throw new Error('http '+r.status);
+  // Grava um lançamento assinado no sistema
+  async enviarRdo(r){
+    const payload = {
+      obra_id:r.obra_id, equipamento_id:r.equipamento_id, data:r.data,
+      operador:r.operador||null, matricula:r.matricula||null,
+      horimetro_inicial:r.horimetro_inicial, horimetro_final:r.horimetro_final,
+      ocorrencia_geral:r.ocorrencia_geral||null,
+      grade:r.grade, manutencoes:r.manutencoes, abastecimentos:r.abastecimentos,
+      assinaturas: Object.assign({ app_id:r.id, origem:'app-campo', versao_app:CONFIG.VERSAO_APP }, r.assinaturas, { anuladas:r.assinaturas_anuladas||[] }),
+    };
+    // Já existe registro dessa máquina nesse dia?
+    const { data:existente, error:e1 } = await sb.from('frota_rdo').select('id,status_medicao,assinaturas').eq('equipamento_id',r.equipamento_id).eq('data',r.data).maybeSingle();
+    if (e1) throw e1;
+    let id = r.servidor_id || null;
+    if (existente) {
+      const ehNosso = existente.id===r.servidor_id || existente.assinaturas?.app_id===r.id;
+      if (!ehNosso) throw { conflito:true, message:'Já existe lançamento dessa máquina nesse dia no sistema.' };
+      if (existente.status_medicao && existente.status_medicao!=='nao_medido') throw { conflito:true, message:'Esse dia já entrou numa medição no sistema e não pode mais ser alterado.' };
+      id = existente.id;
+      payload.editado_por = sessao.id; payload.editado_em = new Date().toISOString();
+      const { error } = await sb.from('frota_rdo').update(payload).eq('id', id);
+      if (error) throw error;
+    } else {
+      payload.criado_por = sessao.id;
+      const { data, error } = await sb.from('frota_rdo').insert(payload).select('id').single();
+      if (error) throw error;
+      id = data.id;
+    }
+    // Acréscimos e descontos: substitui os do dia pelos atuais (mesma regra do sistema)
+    const { error:e2 } = await sb.from('frota_rdo_ajustes').delete().eq('frota_rdo_id', id);
+    if (e2) throw e2;
+    if (r.ajustes.length) {
+      const { error:e3 } = await sb.from('frota_rdo_ajustes').insert(r.ajustes.map(a=>({
+        frota_rdo_id:id, equipamento_id:r.equipamento_id, data:r.data, tipo:a.tipo, descricao:a.descricao, valor:a.valor, criado_por:sessao.id })));
+      if (e3) throw e3;
+    }
+    return id;
   },
   async enviarPendentes(){
-    let n = 0;
+    let ok = 0, falhas = 0, ultimoErro = null;
     for (const r of this.aEnviar()) {
-      await this.enviarRdo(r);
-      r._sync = 'enviado'; r.enviado_em = new Date().toISOString();
-      await this.salvar(r); n++;
+      try {
+        r.servidor_id = await this.enviarRdo(r);
+        r._sync = 'enviado'; r.enviado_em = new Date().toISOString(); r.erro_envio = null;
+        this.servidor = this.servidor.filter(s=>s.id!==r.servidor_id);
+        this.servidor.push({ id:r.servidor_id, obra_id:r.obra_id, equipamento_id:r.equipamento_id, data:r.data, horimetro_final:r.horimetro_final, status_medicao:'nao_medido' });
+        ok++;
+      } catch (e) {
+        falhas++; ultimoErro = e;
+        if (e && e.conflito) { r._sync = 'conflito'; r.erro_envio = e.message; }
+        else r.erro_envio = (e && e.message) || 'Falha ao enviar';
+      }
+      await this.salvar(r);
     }
-    return n;
+    BD.gravar('meta', this.servidor, 'servidor').catch(()=>{});
+    return { ok, falhas, ultimoErro };
   },
 };
 
@@ -659,12 +756,11 @@ function numParaCampo(v){ return v!=null ? String(v).replace('.',',') : ''; }
 function online(){ return navigator.onLine !== false; }
 
 function novoRdoVazio(){
-  const ap = Prefs.get().apontador || {};
   return { id:uid(), versao_app:CONFIG.VERSAO_APP, obra_id:Prefs.get().obra, equipamento_id:null, data:hojeISO(), operador:'', matricula:'',
     horimetro_inicial:null, horimetro_final:null, ocorrencia_geral:'', grade:{},
     manutencoes:[], abastecimentos:[], ajustes:[],
     status_medicao:'nao_medido', _sync:'rascunho', assinaturas:null, assinaturas_anuladas:[],
-    criado_em:new Date().toISOString(), criado_por:ap.nome||'', aparelho_id:idAparelho() };
+    criado_em:new Date().toISOString(), criado_por:sessao?.nome||'', criado_por_id:sessao?.id||null, aparelho_id:idAparelho() };
 }
 
 /* ===================================================================== */
@@ -759,83 +855,135 @@ function seloRdo(r){
   if (travado(r)) return '<span class="selo selo-neutro">🔒 Medido</span>';
   if (r._sync==='rascunho') return '<span class="selo selo-rascunho">Rascunho</span>';
   let s = '';
-  if (r._sync==='enviado') s = '<span class="selo selo-enviado">Enviado</span>';
-  else if (CONFIG.ENDPOINT) s = '<span class="selo selo-info">Aguardando envio</span>';
-  else s = r.exportado_em ? '<span class="selo selo-enviado">Assinado e exportado</span>' : '<span class="selo selo-info">Assinado, falta exportar</span>';
-  if (r.assinaturas && r.assinaturas.recusa_operador) s += '<span class="selo selo-erro">Operador não assinou</span>';
+  if (r._sync==='enviado') s = '<span class="selo selo-enviado">Enviado ao sistema</span>';
+  else if (r._sync==='conflito') s = '<span class="selo selo-erro">Não enviado: conflito</span>';
+  else s = r.erro_envio ? '<span class="selo selo-erro">Envio com erro</span>' : '<span class="selo selo-info">Aguardando envio</span>';
+  if (r.assinaturas && r.assinaturas.recusa_operador) s += '<span class="selo selo-rascunho">Operador não assinou</span>';
   return s;
 }
 
 /* ===================================================================== */
-/* ABERTURA                                                              */
+/* ABERTURA E LOGIN                                                      */
+function comTempo(promessa, ms){ return Promise.race([promessa, new Promise((_,f)=>setTimeout(()=>f(new Error('tempo')), ms))]); }
 async function iniciar(){
   try { await Repo.iniciar(); }
   catch (e) {
-    document.getElementById('carregando-msg').innerHTML = e.message==='sem_catalogo'
-      ? 'Abra o app com internet pelo menos uma vez, pra baixar a lista de obras e máquinas.<br/><br/><button class="btn" onclick="location.reload()">Tentar de novo</button>'
-      : 'Este navegador não permite guardar dados no aparelho. Use o Chrome (Android) ou o Safari (iPhone).';
+    document.getElementById('carregando-msg').textContent = 'Este navegador não permite guardar dados no aparelho. Use o Chrome (Android) ou o Safari (iPhone).';
+    return;
+  }
+  // Sessão: o Supabase guarda o login no aparelho. Sem sinal, se o token
+  // venceu e não dá pra renovar, entra com o último usuário conhecido.
+  let s = null;
+  try { const r = await comTempo(sb.auth.getSession(), 6000); s = r.data.session; } catch (e) {}
+  const conhecido = Prefs.get().sessao;
+  if (s) { sessao = Object.assign({}, conhecido && conhecido.id===s.user.id ? conhecido : {}, { id:s.user.id, email:s.user.email }); }
+  else if (!online() && conhecido) { sessao = conhecido; }
+  if (!sessao) return mostrarTela('tela-login');
+  await iniciarLogado();
+}
+async function fazerLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  const erroEl = document.getElementById('login-erro'), btn = document.getElementById('btn-login');
+  erroEl.textContent = '';
+  if (!email || !senha) { erroEl.textContent = 'Preencha e-mail e senha.'; return; }
+  if (!online()) { erroEl.textContent = 'É preciso estar online pra entrar da primeira vez.'; return; }
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Entrando';
+  let res;
+  try { res = await sb.auth.signInWithPassword({ email, password: senha }); } catch (e) { res = { error:e }; }
+  btn.disabled = false; btn.textContent = 'Entrar';
+  if (res.error) { erroEl.textContent = /invalid/i.test(res.error.message||'') ? 'E-mail ou senha incorretos.' : 'Não foi possível entrar agora. Verifique a internet.'; return; }
+  sessao = { id:res.data.user.id, email:res.data.user.email };
+  document.getElementById('login-senha').value = '';
+  await iniciarLogado(true);
+}
+async function carregarUsuario(){
+  try {
+    const { data } = await sb.from('usuarios').select('*').eq('id', sessao.id).single();
+    const nome = data && ['nome','nome_completo','full_name','name'].map(k=>data[k]).find(v=>v && String(v).trim());
+    if (nome) sessao.nome = String(nome).trim();
+    if (data && data.matricula) sessao.matricula = String(data.matricula);
+  } catch (e) {}
+  if (!sessao.nome) sessao.nome = (sessao.email||'').split('@')[0];
+  Prefs.set('sessao', sessao);
+}
+async function iniciarLogado(primeiraVez){
+  mostrarTela('tela-carregando');
+  document.getElementById('carregando-msg').innerHTML = '<span class="spinner"></span>';
+  if (online()) {
+    await carregarUsuario();
+    try {
+      document.getElementById('carregando-msg').innerHTML = '<span class="spinner"></span> Baixando obras e máquinas';
+      await comTempo(Promise.all([Repo.atualizarCatalogo(), Repo.atualizarServidor()]), 25000);
+    } catch (e) {
+      if (!Repo.temCatalogo()) {
+        document.getElementById('carregando-msg').innerHTML = `Não foi possível baixar as obras e máquinas.<br/><small>${esc(e.message||'')}</small><br/><br/>
+          <button class="btn" onclick="iniciarLogado()">Tentar de novo</button><br/><button class="btn btn-secundario" onclick="sair(true)">Sair</button>`;
+        return;
+      }
+      toast('Sem conexão com o sistema. Usando a lista guardada no celular.', 'erro');
+    }
+  }
+  if (!Repo.temCatalogo()) {
+    document.getElementById('carregando-msg').innerHTML = 'Abra o app com internet pelo menos uma vez, pra baixar as obras e máquinas.<br/><br/><button class="btn" onclick="location.reload()">Tentar de novo</button>';
     return;
   }
   const p = Prefs.get();
   if (!p.obra || !Repo.obra(p.obra)) Prefs.set('obra', Repo.obras()[0]?.id);
-  if (!p.apontador || !p.apontador.nome) return abrirIdentificacao();
   mostrarTela('tela-home'); renderHome();
+  if (primeiraVez && Repo.obras().length>1) abrirTrocaObra('Em qual obra você vai lançar?');
   tentarEnviar(true);
 }
-function abrirIdentificacao(){
-  const ap = Prefs.get().apontador || {};
-  document.getElementById('id-nome').value = ap.nome || '';
-  document.getElementById('id-matricula').value = ap.matricula || '';
-  document.getElementById('id-obra').innerHTML = Repo.obras().map(o=>`<option value="${o.id}" ${o.id===Prefs.get().obra?'selected':''}>${esc(o.nome)}</option>`).join('');
-  mostrarTela('tela-id');
-}
-function salvarIdentificacao(){
-  const nome = document.getElementById('id-nome').value.trim();
-  if (nome.length<3){ document.getElementById('id-erro').textContent = 'Informe seu nome completo.'; return; }
-  Prefs.set('apontador', { nome, matricula: document.getElementById('id-matricula').value.trim() });
-  Prefs.set('obra', document.getElementById('id-obra').value);
-  mostrarTela('tela-home'); renderHome();
+function sair(semPerguntar){
+  const pend = Repo.aEnviar().length + Repo.rdos().filter(r=>r._sync==='conflito').length;
+  const aviso = pend ? `Há ${pend} ${pend>1?'lançamentos que ainda não chegaram':'lançamento que ainda não chegou'} ao sistema. Eles ficam guardados no celular e sobem quando alguém entrar de novo com internet.\n\n` : '';
+  if (!semPerguntar && !confirm(aviso+'Sair do app?')) return;
+  sb.auth.signOut({ scope:'local' }).catch(()=>{});
+  sessao = null; Prefs.set('sessao', null);
+  mostrarTela('tela-login');
 }
 
 /* ===================================================================== */
 /* ENVIO / EXPORTAÇÃO                                                    */
 function renderStatus(){
   const el = document.getElementById('status-barra');
-  const off = !online();
-  if (CONFIG.ENDPOINT){
-    const n = Repo.aEnviar().length;
-    if (off){ el.className='status-barra offline'; el.innerHTML = `📴 Sem internet. ${n ? n+' '+(n>1?'lançamentos esperando':'lançamento esperando')+' o sinal voltar.' : 'Pode lançar normalmente.'}`; }
-    else if (n){ el.className='status-barra pendente'; el.innerHTML = `${n} ${n>1?'lançamentos aguardando':'lançamento aguardando'} envio
-      <button onclick="tentarEnviar()" ${enviando?'disabled':''}>${enviando?'<span class="spinner"></span>Enviando':'<svg class="ic" style="width:16px;height:16px"><use href="#i-envio"/></svg>Enviar agora'}</button>`; }
-    else { el.className='status-barra ok'; el.innerHTML='✓ Tudo enviado'; }
-  } else {
-    const n = Repo.naoExportados().length;
-    if (n){ el.className='status-barra pendente'; el.innerHTML = `${n} ${n>1?'lançamentos assinados estão':'lançamento assinado está'} só neste celular
-      <button onclick="exportar(false)"><svg class="ic" style="width:16px;height:16px"><use href="#i-envio"/></svg>Exportar</button>`; }
-    else if (off){ el.className='status-barra offline'; el.innerHTML='📴 Sem internet. Pode lançar normalmente, fica tudo guardado no celular.'; }
-    else { el.innerHTML=''; el.className='status-barra'; }
-  }
+  const n = Repo.aEnviar().length;
+  const conflitos = Repo.rdos().filter(r=>r._sync==='conflito').length;
+  if (!online()) { el.className='status-barra offline'; el.innerHTML = `📴 Sem internet. ${n ? n+' '+(n>1?'lançamentos esperando':'lançamento esperando')+' o sinal voltar.' : 'Pode lançar normalmente.'}`; }
+  else if (n) { el.className='status-barra pendente'; el.innerHTML = `${n} ${n>1?'lançamentos aguardando':'lançamento aguardando'} envio
+    <button onclick="tentarEnviar()" ${enviando?'disabled':''}>${enviando?'<span class="spinner"></span>Enviando':'<svg class="ic" style="width:16px;height:16px"><use href="#i-envio"/></svg>Enviar agora'}</button>`; }
+  else if (conflitos) { el.className='status-barra offline'; el.innerHTML = `${conflitos} ${conflitos>1?'lançamentos não puderam':'lançamento não pôde'} ser enviado${conflitos>1?'s':''}. Abra pra ver o motivo.`; }
+  else { el.className='status-barra ok'; el.innerHTML='✓ Tudo enviado ao sistema'; }
 }
 async function tentarEnviar(silencioso){
-  if (!CONFIG.ENDPOINT || enviando || !online() || !Repo.aEnviar().length) { renderStatus(); return; }
+  if (enviando || !online() || !sessao || !Repo.aEnviar().length) { renderStatus(); return; }
   enviando = true; renderStatus();
-  try { const n = await Repo.enviarPendentes(); if (!silencioso || n) toast(n>1 ? n+' lançamentos enviados' : 'Lançamento enviado', 'sucesso'); }
-  catch (e) { if (!silencioso) toast('Não deu pra enviar agora. O app tenta de novo quando o sinal melhorar.', 'erro'); }
+  try {
+    const { data } = await sb.auth.getSession();
+    if (!data.session) { if (!silencioso) toast('Sua sessão expirou. Saia e entre de novo pra enviar.', 'erro'); }
+    else {
+      const r = await Repo.enviarPendentes();
+      if (r.ok) toast(r.ok>1 ? r.ok+' lançamentos enviados ao sistema' : 'Lançamento enviado ao sistema', 'sucesso');
+      if (r.falhas && !silencioso) toast('Não deu pra enviar: '+(r.ultimoErro?.message||'erro desconhecido'), 'erro');
+    }
+  } catch (e) { if (!silencioso) toast('Não deu pra enviar agora. O app tenta de novo quando o sinal melhorar.', 'erro'); }
   enviando = false;
   if (telaAtiva()==='tela-home') renderHome(); else renderStatus();
 }
 window.addEventListener('online', ()=>{ renderStatus(); tentarEnviar(true); });
 window.addEventListener('offline', renderStatus);
-document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && Repo.cat) tentarEnviar(true); });
+document.addEventListener('visibilitychange', ()=>{ if (!document.hidden && sessao && Repo.cat) tentarEnviar(true); });
+setInterval(()=>{ if (sessao && Repo.cat && !document.hidden) tentarEnviar(true); }, 120000);
 
+// Cópia de segurança: arquivo com os lançamentos deste celular (menu ⋯)
 async function exportar(todos){
-  const lista = Repo.rdos().filter(r=>r.assinaturas && (todos || !r.exportado_em));
-  if (!lista.length){ toast(todos ? 'Nenhum lançamento assinado ainda.' : 'Nada novo pra exportar.'); return; }
-  const ap = Prefs.get().apontador || {};
+  const lista = Repo.rdos().filter(r=>r.assinaturas);
+  if (!lista.length){ toast('Nenhum lançamento assinado neste celular.'); return; }
+  const ap = { id:sessao?.id, nome:sessao?.nome, email:sessao?.email };
   const agora = new Date();
   const slug = (ap.nome||'apontador').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
   const nome = `lancamentos_${hojeISO()}_${agora.getHours()}h${String(agora.getMinutes()).padStart(2,'0')}_${slug}.json`;
-  const conteudo = JSON.stringify({ app:'produtividade-campo', versao_app:CONFIG.VERSAO_APP, exportado_em:agora.toISOString(),
+  const conteudo = JSON.stringify({ app:'sigecon-produtividade-frota', versao_app:CONFIG.VERSAO_APP, exportado_em:agora.toISOString(),
     aparelho_id:idAparelho(), apontador:ap, catalogo_versao:Repo.cat.versao||null, lancamentos:lista }, null, 1);
   let feito = false;
   for (const tipo of ['application/json','text/plain']) {
@@ -851,10 +999,7 @@ async function exportar(todos){
     const a = document.createElement('a'); a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url), 4000);
   }
-  const em = agora.toISOString();
-  for (const r of lista) { r.exportado_em = em; await Repo.salvar(r); }
-  toast(lista.length>1 ? lista.length+' lançamentos exportados' : 'Lançamento exportado', 'sucesso');
-  renderHome();
+  toast('Cópia de segurança gerada', 'sucesso');
 }
 
 /* ===================================================================== */
@@ -894,8 +1039,8 @@ function renderHome(){
 
   let html = avisosApp();
   if (!termo && filtroHome==='todos' && equipsObra.length){
-    const lancadosHoje = new Set(todos.filter(r=>r.data===hojeISO()).map(r=>r.equipamento_id));
-    const faltam = equipsObra.filter(e=>!lancadosHoje.has(e.id));
+    const faltam = equipsObra.filter(e=>!Repo.lancadoNoDia(e.id, hojeISO()));
+    const lancadosHoje = { size: equipsObra.length - faltam.length };
     html += faltam.length
       ? `<button class="faltam" onclick="abrirFaltamHoje()"><span class="faltam-num">${faltam.length}</span>
           <span class="faltam-txt">${faltam.length>1?'máquinas sem lançamento hoje':'máquina sem lançamento hoje'}<small>${lancadosHoje.size} de ${equipsObra.length} já lançadas. Toque pra ver quais faltam.</small></span>
@@ -912,13 +1057,13 @@ function renderHome(){
       const e = Repo.equipamento(r.equipamento_id);
       const res = resumoGrade(r.grade||{});
       const delta = (r.horimetro_inicial!=null && r.horimetro_final!=null) ? r.horimetro_final - r.horimetro_inicial : null;
-      const cls = r._sync==='rascunho' ? 'sy-rascunho' : (r._sync==='enviado' || r.exportado_em ? 'sy-enviado' : 'sy-pendente');
+      const cls = r._sync==='rascunho' ? 'sy-rascunho' : r._sync==='enviado' ? 'sy-enviado' : r._sync==='conflito' ? 'sy-conflito' : 'sy-pendente';
       html += `<button class="card card-rdo ${cls} ${travado(r)?'travado':''}" onclick="abrirRdo('${r.id}')">
         <div class="card-topo-linha">${seloRdo(r)}${r._sync==='rascunho'&&res.semAtividade?`<span class="selo selo-rascunho">${res.semAtividade}h sem atividade</span>`:''}</div>
         <div class="card-linha">
           <span class="equip-ic">${e?.icone||'🚜'}</span>
           <div style="flex:1;min-width:0"><div class="card-titulo">${esc(nomeEquip(e))}</div>
-            <div class="card-sub">${esc(idEquip(e))}${r.operador?' com '+esc(r.operador):''}</div></div>
+            <div class="card-sub">${esc([idEquip(e), r.operador ? (idEquip(e)?'com ':'Com ')+r.operador : '', r.criado_por_id && sessao && r.criado_por_id!==sessao.id ? 'lançado por '+r.criado_por : ''].filter(Boolean).join(r.operador&&idEquip(e)?' ':', ').replace(' lançado',', lançado'))}</div></div>
           <span class="card-seta"><svg class="ic"><use href="#i-seta"/></svg></span>
         </div>
         ${reguaMini(r.grade||{})}
@@ -932,36 +1077,40 @@ function renderHome(){
 
 function abrirFaltamHoje(){
   const obraId = Prefs.get().obra;
-  const lancados = new Set(Repo.rdos().filter(r=>r.data===hojeISO()).map(r=>r.equipamento_id));
-  const faltam = Repo.equipamentos(obraId).filter(e=>!lancados.has(e.id));
+  const faltam = Repo.equipamentos(obraId).filter(e=>!Repo.lancadoNoDia(e.id, hojeISO()));
   escolherOpcao('Sem lançamento hoje', faltam.map(e=>({ valor:e.id, ic:e.icone||'🚜', rotulo:e.descricao,
     sub:[idEquip(e), Repo.fornecedor(e.fornecedor_id).razao_social].filter(Boolean).join(', ') })), id=>{
       novoLancamento(); rdo.equipamento_id = id; sugerirMedidor(); autosalvar(); passoMax = 1; irPasso(1);
   });
 }
-function abrirTrocaObra(){
-  escolherOpcao('Trocar obra', Repo.obras().map(o=>({ valor:o.id, ic:'🏗️', rotulo:o.nome,
+function abrirTrocaObra(titulo){
+  escolherOpcao(typeof titulo==='string' ? titulo : 'Trocar obra', Repo.obras().map(o=>({ valor:o.id, ic:'🏗️', rotulo:o.nome,
     sub:Repo.equipamentos(o.id).length+' máquinas mobilizadas', sel:o.id===Prefs.get().obra })), id=>{
       Prefs.set('obra', id); filtroHome='todos'; renderHome(); toast('Obra: '+Repo.obra(id).nome);
   });
 }
 function abrirMenu(){
-  const ap = Prefs.get().apontador || {};
-  const ops = [];
-  if (!CONFIG.ENDPOINT) ops.push({ valor:'exportar', ic:'📤', rotulo:'Exportar todos os assinados', sub:'Gera de novo o arquivo com todos os lançamentos assinados' });
-  ops.push({ valor:'apontador', ic:'👷', rotulo:'Trocar apontador', sub:'Hoje: '+(ap.nome||'—') });
-  ops.push({ valor:'catalogo', ic:'🔄', rotulo:'Atualizar lista de máquinas', sub: online() ? 'Baixa o catálogo mais recente' : 'Precisa de internet' });
-  ops.push({ valor:'sobre', ic:'ℹ️', rotulo:'Sobre o app', sub:'Versão '+CONFIG.VERSAO_APP });
+  const ops = [
+    { valor:'atualizar', ic:'🔄', rotulo:'Atualizar obras e máquinas', sub: online() ? 'Busca a lista mais recente do sistema' : 'Precisa de internet' },
+    { valor:'backup', ic:'📤', rotulo:'Gerar cópia de segurança', sub:'Arquivo com os lançamentos assinados deste celular' },
+    { valor:'sobre', ic:'ℹ️', rotulo:'Sobre o app', sub:'Versão '+CONFIG.VERSAO_APP },
+    { valor:'sair', ic:'🚪', rotulo:'Sair', sub:(sessao?.nome||'')+(sessao?.email?' ('+sessao.email+')':''), perigo:true },
+  ];
   escolherOpcao('Opções', ops, async v=>{
-    if (v==='exportar') exportar(true);
-    if (v==='apontador') abrirIdentificacao();
-    if (v==='catalogo') { try { await Repo.carregarCatalogo(); renderHome(); toast('Lista de máquinas atualizada', 'sucesso'); } catch (e) { toast('Não foi possível atualizar agora.', 'erro'); } }
+    if (v==='atualizar') {
+      if (!online()) { toast('Sem internet agora.', 'erro'); return; }
+      toast('Atualizando...');
+      try { await Promise.all([Repo.atualizarCatalogo(), Repo.atualizarServidor()]); renderHome(); toast('Obras e máquinas atualizadas', 'sucesso'); }
+      catch (e) { toast('Não foi possível atualizar: '+(e.message||''), 'erro'); }
+    }
+    if (v==='backup') exportar(true);
+    if (v==='sair') sair();
     if (v==='sobre') abrirModal('Sobre o app', `<dl class="lista-def">
       <div><dt>Versão</dt><dd>${CONFIG.VERSAO_APP}</dd></div>
-      <div><dt>Catálogo</dt><dd>${esc(Repo.cat.versao||'—')}</dd></div>
+      <div><dt>Usuário</dt><dd>${esc(sessao?.nome||'—')}</dd></div>
+      <div><dt>Lista atualizada em</dt><dd>${Repo.cat.versao && Repo.cat.versao.includes('T') ? esc(fmtHoraCompleta(Repo.cat.versao)) : '—'}</dd></div>
       <div><dt>Aparelho</dt><dd>${esc(descricaoAparelho())}</dd></div>
-      <div><dt>Código do aparelho</dt><dd class="codigo" style="font-size:11px">${esc(idAparelho().slice(0,13))}</dd></div>
-      <div><dt>Lançamentos guardados</dt><dd>${Repo.rdos().length}</dd></div></dl>
+      <div><dt>Lançamentos no celular</dt><dd>${Repo.rdos().length}</dd></div></dl>
       <button class="btn btn-secundario" onclick="fecharModal()">Fechar</button>`);
   });
 }
@@ -1034,7 +1183,7 @@ function renderRdo(){
 function resumoEquipHtml(){
   const e = Repo.equipamento(rdo.equipamento_id); if (!e) return '';
   return `<div class="resumo-equip"><span class="equip-ic">${e.icone||'🚜'}</span><div style="flex:1;min-width:0">
-    <div class="card-titulo">${esc(e.descricao)}</div><div class="card-sub">${esc(idEquip(e))}, ${esc(fmtData(rdo.data,true))}</div></div></div>`;
+    <div class="card-titulo">${esc(e.descricao)}</div><div class="card-sub">${esc([idEquip(e), fmtData(rdo.data,true)].filter(Boolean).join(', '))}</div></div></div>`;
 }
 
 /* ---------- Passo 1: Máquina ---------- */
@@ -1043,7 +1192,7 @@ function passoMaquina(){
   const equips = Repo.equipamentos(rdo.obra_id);
   const forns = [...new Set(equips.map(e=>e.fornecedor_id))];
   const termo = (window._buscaEquip||'').toLowerCase();
-  const lancHoje = new Set(Repo.rdos().filter(r=>r.data===rdo.data && r.id!==rdo.id).map(r=>r.equipamento_id));
+  const lancHoje = new Set(equips.filter(e=>Repo.lancadoNoDia(e.id, rdo.data, rdo)).map(e=>e.id));
   const lista = equips.filter(e=>(!filtroForn || e.fornecedor_id===filtroForn) &&
     (!termo || [e.descricao,e.prefixo,e.placa].join(' ').toLowerCase().includes(termo)));
   return `<div class="passo-titulo">Qual máquina?</div>
@@ -1081,6 +1230,7 @@ function sugerirMedidor(){
 function passoDia(){
   const e = Repo.equipamento(rdo.equipamento_id);
   const dup = Repo.doDia(rdo.equipamento_id, rdo.data, rdo.id);
+  const dupSistema = !dup && Repo.doServidor(rdo.equipamento_id, rdo.data, rdo);
   const ult = Repo.ultimoMedidor(rdo.equipamento_id, rdo.data);
   const rot = rotuloMedidor(e), un = unidMedidor(e);
   const ini = rdo.horimetro_inicial, fim = rdo.horimetro_final;
@@ -1092,6 +1242,7 @@ function passoDia(){
   return resumoEquipHtml() + `
     ${dup ? `<div class="banner-duplicado"><b>Essa máquina já tem lançamento nesse dia.</b><br/>Abra o existente pra não lançar duas vezes, ou escolha outra data.
       <button class="btn btn-secundario" onclick="abrirRdo('${dup.id}')">Abrir o lançamento existente</button></div>` : ''}
+    ${dupSistema ? `<div class="banner-duplicado"><b>Essa máquina já tem lançamento nesse dia no sistema.</b><br/>Foi feito pelo escritório ou por outro celular. Escolha outra data, ou peça ao escritório pra corrigir o existente.</div>` : ''}
     <div class="campo"><span class="rotulo">Data *</span><input type="date" value="${rdo.data}" max="${hojeISO()}" onchange="rdo.data=this.value||hojeISO();sugerirMedidor();autosalvar();renderRdo()"/></div>
     <div class="linha2">
       <div class="campo" style="flex:2"><span class="rotulo">Operador</span><input type="text" value="${esc(rdo.operador)}" autocomplete="off" autocapitalize="words" oninput="rdo.operador=this.value;autosalvar()"/></div>
@@ -1102,7 +1253,7 @@ function passoDia(){
       <div class="campo"><span class="rotulo">${rot} final (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(fim)}" placeholder="No fim do dia" onchange="rdo.horimetro_final=parseNum(this.value);autosalvar();renderRdo()"/></div>
     </div>
     ${ajudaMed}
-    <div class="barra-acao"><button class="btn" ${dup?'disabled':''} onclick="irPasso(2)">Continuar para as horas</button></div>`;
+    <div class="barra-acao"><button class="btn" ${dup||dupSistema?'disabled':''} onclick="irPasso(2)">Continuar para as horas</button></div>`;
 }
 
 /* ---------- Passo 3: Horas ---------- */
@@ -1295,7 +1446,8 @@ function verificacoes(){
   const e = Repo.equipamento(rdo.equipamento_id), r = resumoGrade(rdo.grade), un = unidMedidor(e);
   const av = [];
   if (!r.apontadas) av.push({ txt:'Nenhuma hora apontada.', passo:2, bloqueia:true });
-  if (Repo.doDia(rdo.equipamento_id, rdo.data, rdo.id)) av.push({ txt:'Já existe outro lançamento dessa máquina nesse dia.', passo:1, bloqueia:true });
+  if (Repo.doDia(rdo.equipamento_id, rdo.data, rdo.id)) av.push({ txt:'Já existe outro lançamento dessa máquina nesse dia neste celular.', passo:1, bloqueia:true });
+  else if (Repo.doServidor(rdo.equipamento_id, rdo.data, rdo)) av.push({ txt:'Essa máquina já tem lançamento nesse dia no sistema.', passo:1, bloqueia:true });
   if (rdo.horimetro_inicial!=null && rdo.horimetro_final!=null && rdo.horimetro_final<rdo.horimetro_inicial)
     av.push({ txt:`${rotuloMedidor(e)} final menor que o inicial.`, passo:1, bloqueia:true });
   if (r.semAtividade) av.push({ txt:`${r.semAtividade}h em atividade sem atividade ou local definidos.`, passo:2 });
@@ -1430,7 +1582,7 @@ function pegarLocalizacao(){
 function passoAssinar(){
   const e = Repo.equipamento(rdo.equipamento_id), r = resumoGrade(rdo.grade), un = unidMedidor(e);
   const paradas = Object.entries(r.porEvento).filter(([n])=>n!=='Em Atividade');
-  const ap = Prefs.get().apontador || {};
+  const ap = sessao || {};
   const delta = rdo.horimetro_inicial!=null && rdo.horimetro_final!=null ? rdo.horimetro_final - rdo.horimetro_inicial : null;
   return `<div class="passo-titulo">Assinaturas</div>
     <div class="passo-desc">Mostre o resumo ao operador antes de ele assinar.</div>
@@ -1499,7 +1651,7 @@ async function assinarEConcluir(){
     const gps = await pegarLocalizacao();
     btn.innerHTML = '<span class="spinner"></span>Assinando';
     const hash = await sha256(conteudoCanonico(rdo));
-    const ap = Prefs.get().apontador || {};
+    const ap = sessao || {};
     rdo.assinaturas = {
       em: new Date().toISOString(),
       fuso: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -1508,9 +1660,9 @@ async function assinarEConcluir(){
       aparelho: { id:idAparelho(), descricao:descricaoAparelho(), navegador:navigator.userAgent, versao_app:CONFIG.VERSAO_APP },
       operador: recusou ? null : { nome:opNome, documento:opDoc, imagem:pads.op.imagem() },
       recusa_operador: recusou ? { motivo } : null,
-      apontador: { nome:ap.nome||'', matricula:ap.matricula||'', imagem:pads.ap.imagem() },
+      apontador: { usuario_id:ap.id||null, email:ap.email||'', nome:ap.nome||'', matricula:ap.matricula||'', imagem:pads.ap.imagem() },
     };
-    rdo._sync = 'pendente'; rdo.exportado_em = null;
+    rdo._sync = 'pendente'; rdo.erro_envio = null;
     await Repo.salvar(rdo);
   } catch (e) {
     rdo.assinaturas = null; btn.disabled = false; btn.textContent = 'Assinar e concluir';
@@ -1527,6 +1679,7 @@ function comprovanteHtml(){
   const a = rdo.assinaturas;
   const trava = travado(rdo);
   let h = (trava ? `<div class="banner-trava"><b>🔒 Este dia já entrou numa medição</b>Não dá mais pra corrigir pelo app. Se precisar, fale com o escritório.</div>` : '') +
+    (!trava && rdo.erro_envio ? `<div class="banner-duplicado"><b>${rdo._sync==='conflito'?'Este lançamento não pôde ir pro sistema':'Ainda não foi enviado'}</b><br/>${esc(rdo.erro_envio)}${rdo._sync==='conflito'?'<br/>Corrija a data, ou fale com o escritório sobre o lançamento que já existe.':'<br/>O app tenta de novo sozinho.'}</div>` : '') +
     resumoEquipHtml() + numerosDia() + reguaMini(rdo.grade) + '<div style="height:14px"></div>';
   if (a) {
     const gps = a.gps && a.gps.lat!=null
@@ -1562,12 +1715,12 @@ async function conferirIntegridade(){
   } catch (e) { el.textContent=''; }
 }
 async function corrigirAssinado(){
-  const msg = rdo._sync==='enviado' || rdo.exportado_em
-    ? 'Este lançamento já saiu do celular. Corrigir anula as assinaturas e ele vai precisar ser assinado e enviado de novo. Continuar?'
+  const msg = rdo._sync==='enviado'
+    ? 'Este lançamento já está no sistema. Corrigir anula as assinaturas: ele precisa ser assinado de novo e a versão corrigida substitui a do sistema. Continuar?'
     : 'Corrigir anula as assinaturas, que vão precisar ser colhidas de novo. Continuar?';
   if (!confirm(msg)) return;
   rdo.assinaturas_anuladas = rdo.assinaturas_anuladas || [];
-  rdo.assinaturas_anuladas.push(Object.assign({}, rdo.assinaturas, { anulada_em:new Date().toISOString(), anulada_por:(Prefs.get().apontador||{}).nome||'' }));
+  rdo.assinaturas_anuladas.push(Object.assign({}, rdo.assinaturas, { anulada_em:new Date().toISOString(), anulada_por:sessao?.nome||'' }));
   rdo.assinaturas = null; rdo._sync = 'rascunho';
   await Repo.salvar(rdo);
   passoMax = 4; irPasso(2);

@@ -1,13 +1,13 @@
 // Service worker: guarda o app no celular pra abrir sem internet.
 // A CADA PUBLICAÇÃO de uma versão nova, mude o número abaixo.
 // É isso que faz os celulares perceberem que há atualização.
-const VERSAO = 'fc-v1.0.0';
+const VERSAO = 'fc-v2.0.0';
 
 const ARQUIVOS = [
   './',
   './index.html',
   './manifest.json',
-  './catalogo.json',
+  './supabase.js',
   './icone.svg',
   './icone-180.png',
   './icone-192.png',
@@ -33,19 +33,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== location.origin) return;   // envio ao servidor passa direto
-
-  // Catálogo: tenta a rede primeiro (lista atualizada), cai no cache sem sinal
-  if (url.pathname.endsWith('/catalogo.json')) {
-    e.respondWith(
-      fetch(req).then(r => {
-        const copia = r.clone();
-        caches.open(VERSAO).then(c => c.put('./catalogo.json', copia));
-        return r;
-      }).catch(() => caches.match('./catalogo.json'))
-    );
-    return;
-  }
+  if (url.origin !== location.origin) return;   // Supabase (login, leitura e envio) passa direto
 
   // Abrir o app: sempre do cache (abre na hora, com ou sem sinal)
   if (req.mode === 'navigate') {

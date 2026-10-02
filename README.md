@@ -1,71 +1,88 @@
-# Produtividade em Campo
+# Produtividade da Frota (sigecon-produtividade-frota)
 
-App de celular para lançar a produtividade diária das máquinas, com assinatura do operador e do apontador. Funciona sem internet depois de aberto uma vez.
+App de celular para lançar a produtividade diária das máquinas, com assinatura do operador e do apontador. Usa o mesmo Supabase do SIGECON (gestão de frota): mesmos usuários, obras, máquinas e listas, e grava direto na `frota_rdo`. Funciona sem internet depois do primeiro acesso.
+
+## Antes de publicar: uma alteração no banco
+
+Rode `supabase-assinaturas.sql` uma vez no Supabase (**SQL Editor → New query → colar → Run**). Ele só adiciona a coluna `assinaturas` na `frota_rdo`. Nada do que já existe muda, e o módulo do escritório continua funcionando igual.
+
+### Permissões
+
+O app faz, com o usuário de quem está logado, as mesmas operações que o módulo de frota já faz:
+
+| Tabela | O app faz |
+|---|---|
+| `obras`, `equipamentos`, `frota_tipos`, `fornecedores`, `contrato_ativos`, `contratos`, `frota_rdo_listas`, `usuarios` | lê |
+| `frota_rdo` | lê, cria e altera (só dias ainda não medidos) |
+| `frota_rdo_ajustes` | lê, cria e apaga |
+
+Se o apontador já consegue lançar produtividade pelo sistema, o app vai funcionar com o mesmo login. Se der erro de permissão ao entrar ou ao enviar, revise as regras de acesso (RLS) dessas tabelas para o perfil do apontador.
 
 ## Publicar no GitHub Pages
 
-1. Crie um repositório (ex: `produtividade-campo`) e envie todos os arquivos desta pasta para a raiz dele.
-2. No repositório, vá em **Settings → Pages**. Em *Source* escolha **Deploy from a branch**, branch `main`, pasta `/ (root)`, e salve.
-3. Em 1 ou 2 minutos o app fica em `https://SEU-USUARIO.github.io/produtividade-campo/`. Esse é o link que vai para os operadores.
-
-O app precisa ser aberto por `https`. O GitHub Pages já faz isso.
+1. Envie todos os arquivos desta pasta para a raiz do repositório `sigecon-produtividade-frota`.
+2. **Settings → Pages**: *Deploy from a branch*, branch `main`, pasta `/ (root)`.
+3. O app fica em `https://SEU-USUARIO.github.io/sigecon-produtividade-frota/`.
 
 ## Instalar no celular
 
-**Android (Chrome):** abra o link. Aparece o aviso "Instale o app" na tela inicial do app; toque em **Instalar**. Se não aparecer, use o menu ⋮ do Chrome → **Instalar app** (ou "Adicionar à tela inicial").
+**Android (Chrome):** abra o link e toque em **Instalar** no aviso dentro do app (ou menu ⋮ do Chrome → **Instalar app**).
 
-**iPhone (Safari):** abra o link no Safari, toque em **Compartilhar** → **Adicionar à Tela de Início**. Tem que ser pelo Safari.
+**iPhone (Safari):** abra o link no Safari → **Compartilhar** → **Adicionar à Tela de Início**.
 
-No primeiro acesso o app pede o nome do apontador e a obra. Depois disso abre direto, com ou sem sinal.
+O primeiro acesso precisa de internet: o apontador entra com o e-mail e a senha do SIGECON, escolhe a obra e o app baixa as máquinas e listas. Depois disso abre direto, com ou sem sinal.
 
-## Cadastrar obras e máquinas
+## Como os dados andam
 
-Tudo fica em `catalogo.json`. Dá pra editar direto pelo site do GitHub (ícone de lápis no arquivo):
+**Do sistema para o celular**, sempre que o app abre com internet (ou pelo menu ⋯ → **Atualizar obras e máquinas**):
 
-- `obras`: `id` e `nome`.
-- `fornecedores`: `id` e `razao_social`.
-- `equipamentos`: `id`, `obra_id`, `fornecedor_id`, `descricao`, `prefixo` ou `placa`, `icone` (emoji) e `tipo_franquia` (`"horas"` usa horímetro, `"km"` usa odômetro). Para tirar uma máquina da lista, coloque `"ativo": false`.
-- `eventos`, `atividades` (por obra) e `locais` (por obra): mesmas listas do sistema.
+- obras com status `ativa`;
+- máquinas ativas com contrato ativo, cada uma na obra do seu contrato (mesma regra do módulo de frota);
+- eventos, atividades e locais da `frota_rdo_listas`;
+- lançamentos dos últimos 45 dias da `frota_rdo`, para não deixar lançar a mesma máquina duas vezes no dia e para sugerir o horímetro inicial.
 
-Mude o campo `versao` a cada alteração. Os celulares baixam o catálogo novo sempre que abrem o app com internet, ou pelo menu ⋯ → **Atualizar lista de máquinas**.
+Cadastrou máquina, atividade ou local no sistema? Ela aparece no celular na próxima vez que o app abrir com internet.
 
-**Não mude o `id` de algo que já foi usado em lançamentos.** Os lançamentos guardam o `id`.
+**Do celular para o sistema:** quando o lançamento é assinado, ele vai para a `frota_rdo` (grade de horas, manutenções e abastecimentos no mesmo formato do sistema) e os acréscimos e descontos para a `frota_rdo_ajustes`. Sem sinal, fica numa fila no celular e sobe sozinho quando a internet voltar. O lançamento aparece no histórico, nos relatórios e nas medições do sistema como qualquer outro.
 
-## Publicar uma nova versão do app
+**Rascunhos não sobem.** Só lançamentos assinados vão para o sistema.
 
-Sempre que alterar `index.html` (ou ícones), abra `sw.js` e aumente a `VERSAO` (ex: `fc-v1.0.0` → `fc-v1.0.1`). Sem isso, os celulares continuam com a versão antiga guardada. Com isso, aparece no app o aviso "Nova versão do app" com o botão **Atualizar**.
+### Quando o envio é recusado
 
-Mudanças só no `catalogo.json` não precisam disso.
+- **Já existe lançamento da máquina naquele dia no sistema** (feito pelo escritório ou por outro celular): o app não sobrescreve. O lançamento fica marcado em vermelho no celular, com o motivo.
+- **O dia já entrou em medição:** o app não altera. Mesma marcação.
 
-## Para onde vão os lançamentos
-
-Enquanto não houver servidor, os lançamentos ficam **guardados no celular** e saem pelo botão **Exportar** (barra amarela no topo, ou menu ⋯). Ele gera um arquivo `.json` e abre o compartilhamento do celular: WhatsApp, e-mail, Drive. O arquivo tem tudo, inclusive as assinaturas e a trilha (data, hora, GPS, aparelho e código de conferência).
-
-Oriente os apontadores a exportar no fim de cada dia. Se o celular for perdido, formatado ou o app for desinstalado antes de exportar, os lançamentos daquele aparelho se perdem.
-
-Quando o backend existir, coloque a URL em `CONFIG.ENDPOINT` no `index.html`. O app passa a enviar sozinho cada lançamento assinado (POST com o JSON) assim que tiver sinal, e o botão Exportar some.
+Em ambos os casos, o escritório decide o que fazer com o registro existente.
 
 ## Assinatura
 
-O operador confere o resumo do dia e assina com o dedo; o apontador assina em seguida. O app registra junto:
+O operador confere o resumo do dia e assina com o dedo; o apontador (usuário logado) assina em seguida. Vai junto para a coluna `assinaturas`:
 
-- data e hora (do celular, com fuso);
+- data, hora e fuso do celular;
 - localização GPS, se o celular permitir;
 - identificação do aparelho;
-- um código de conferência (SHA-256 do conteúdo assinado).
+- código de conferência (SHA-256 do conteúdo assinado);
+- histórico de assinaturas anuladas, se o lançamento foi corrigido.
 
-Se o lançamento for corrigido depois, as assinaturas são anuladas, ficam guardadas no histórico do lançamento e precisam ser colhidas de novo. Ao abrir um lançamento assinado, o app confere se o conteúdo ainda bate com o código.
-
-Se o operador se recusar a assinar, o apontador registra o motivo e assina sozinho. O lançamento fica marcado como "Operador não assinou".
+Corrigir um lançamento assinado anula as assinaturas, que precisam ser colhidas de novo; a versão corrigida substitui a do sistema (se o dia ainda não foi medido). Se o operador se recusar a assinar, o apontador registra o motivo e assina sozinho.
 
 Para a assinatura valer como prova perante o fornecedor, inclua no contrato de locação uma cláusula aceitando o registro eletrônico do app como comprovação das horas.
+
+## Publicar uma nova versão do app
+
+Sempre que alterar `index.html` ou os ícones, aumente a `VERSAO` em `sw.js` (ex: `fc-v2.0.0` → `fc-v2.0.1`). Sem isso, os celulares continuam com a versão antiga. Com isso, aparece no app o aviso **Nova versão do app** com o botão **Atualizar**.
+
+## Outros apps no mesmo GitHub
+
+Todos os apps da mesma conta ficam sob `SEU-USUARIO.github.io` e dividem o armazenamento do celular. Num app novo (ex: `sigecon-produtividade-operadores`), use nomes próprios. Este app usa o banco local `frota_campo`, as chaves `fc_pref` e `fc_tema` e a sessão `sb-frota-campo-auth`; o de vistorias usa `vistorias_campo_db` e `tema_app`.
 
 ## Arquivos
 
 | Arquivo | Para quê |
 |---|---|
-| `index.html` | O app inteiro |
-| `catalogo.json` | Obras, máquinas, eventos, atividades e locais |
-| `sw.js` | Guarda o app no celular para abrir sem internet |
-| `manifest.json` | Nome, cores e ícones para instalar na tela inicial |
+| `index.html` | O app |
+| `supabase.js` | Biblioteca do Supabase (2.117.2), guardada junto pra abrir sem internet |
+| `sw.js` | Guarda o app no celular |
+| `manifest.json` | Nome, cores e ícones para instalar |
 | `icone*.png`, `icone.svg` | Ícones |
+| `supabase-assinaturas.sql` | Alteração única no banco (coluna de assinaturas) |
