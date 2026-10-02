@@ -495,6 +495,8 @@
   #impressao .sig-img{display:flex;align-items:center;gap:4px;margin-top:2px;}
   #impressao .sig-img img{flex:1;min-width:0;}
   #impressao .sig-img .sig-selfie{flex:0 0 16mm;width:16mm;height:16mm;object-fit:cover;border-radius:2mm;}
+  .selfie-foto video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+  .selfie-foto.ao-vivo{width:150px;height:150px;border-style:solid;border-color:var(--orange);}
 
 </style>
 </head>
@@ -598,7 +600,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.4.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.5.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -1081,7 +1083,7 @@ function abrirModal(titulo, html){
   document.querySelector('#modal .modal').scrollTop = 0;
   guardaHistorico();
 }
-function fecharModal(){ document.getElementById('modal').classList.remove('aberto'); }
+function fecharModal(){ document.getElementById('modal').classList.remove('aberto'); if (typeof pararCamera==='function') pararCamera(); }
 document.addEventListener('keydown', e=>{ if (e.key==='Escape') fecharModal(); });
 
 let _opcoesCb = null, _opcoesAtuais = [];
@@ -1504,6 +1506,7 @@ function exclusaoPossivel(r){
   const eu = sessao.id;
   if (!r.fluxo) return 'local';                                            // versão antiga do app
   if (travado(r)) return 'medido';
+  if (r.frota_rdo_id!=null && r.fluxo!=='no_sistema' && !ehApontador()) return null;
   if (r.fluxo==='no_sistema') return 'no_sistema';
   if (!r.no_servidor && (r.responsavel_id===eu || r.criado_por_id===eu)) return 'local';   // nunca saiu do celular
   if (ehApontador()) return 'cancelar';
@@ -2092,7 +2095,8 @@ async function abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar){
         <div class="selfie-foto" id="selfie-prev"><span>📷</span></div>
         <div style="flex:1;min-width:0"><div class="assin-img"><img src="${salva.imagem}" alt="Sua assinatura salva"/></div><div class="ajuda" style="margin:6px 0 0">Sua assinatura salva</div></div>
       </div>
-      <label class="btn btn-secundario" style="margin-top:12px;cursor:pointer" id="selfie-btn">📷 Tirar selfie<input type="file" accept="image/*" capture="user" hidden onchange="receberSelfie(this)"/></label>
+      <button class="btn btn-secundario" style="margin-top:12px" id="selfie-btn" onclick="acaoSelfie()">📷 Tirar selfie</button>
+      <input type="file" id="selfie-arquivo" accept="image/*" capture="user" hidden onchange="receberSelfie(this)"/>
     </div>
     <div id="assin-desenho-box" style="display:none">
       <div class="pad-wrap"><canvas id="pad-modal" aria-label="Área de assinatura"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
@@ -2109,6 +2113,7 @@ async function abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar){
       if (!window._pad || !window._pad.valida()) { erro.textContent = 'Faça sua assinatura no quadro.'; return; }
       dados = { imagem: window._pad.imagem(), selfie:null, metodo:'desenho' };
     } else {
+      if (!window._selfie && _cam) capturarSelfie();
       if (!window._selfie) { erro.textContent = 'Tire a selfie pra assinar.'; return; }
       dados = { imagem: salva.imagem, selfie: window._selfie, metodo:'assinatura_salva_e_selfie' };
     }
@@ -2117,18 +2122,56 @@ async function abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar){
     catch (e) { btn.disabled = false; btn.textContent = rotuloBtn; erro.textContent = e.message==='sem_crypto' ? 'Abra o app pelo endereço https pra assinar.' : (e.message || 'Não foi possível assinar.'); }
   };
 }
+// Câmera ao vivo dentro do app (computador e celular). Só se o navegador não
+// tiver câmera ao vivo, o celular abre a câmera dele; no computador, não abre
+// seletor de arquivo, pra ninguém usar uma foto qualquer.
+let _cam = null;
+function pararCamera(){ if (_cam) { _cam.getTracks().forEach(t=>t.stop()); _cam = null; } }
+function acaoSelfie(){ if (_cam) capturarSelfie(); else abrirCamera(); }
+async function abrirCamera(){
+  const erro = document.getElementById('pad-erro'), prev = document.getElementById('selfie-prev'), btn = document.getElementById('selfie-btn');
+  erro.textContent = '';
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      _cam = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ ideal:640 }, height:{ ideal:640 } }, audio:false });
+      prev.classList.add('ao-vivo');
+      prev.innerHTML = '<video id="selfie-video" autoplay playsinline muted></video>';
+      const v = document.getElementById('selfie-video'); v.srcObject = _cam; await v.play().catch(()=>{});
+      btn.textContent = '📸 Capturar';
+      return;
+    } catch (e) {
+      pararCamera();
+      if (e && e.name==='NotAllowedError') { erro.textContent = 'A câmera foi bloqueada. Libere o acesso à câmera nas configurações do navegador e tente de novo.'; return; }
+    }
+  }
+  if (matchMedia('(pointer: coarse)').matches) document.getElementById('selfie-arquivo').click();
+  else erro.textContent = 'Não encontramos uma câmera neste aparelho. Use "Assinar desenhando".';
+}
+function capturarSelfie(){
+  const v = document.getElementById('selfie-video'); if (!v || !v.videoWidth) return;
+  const max = 320, f = Math.min(1, max/Math.max(v.videoWidth, v.videoHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(v.videoWidth*f); c.height = Math.round(v.videoHeight*f);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  window._selfie = c.toDataURL('image/jpeg', 0.6);
+  pararCamera();
+  const prev = document.getElementById('selfie-prev'); prev.classList.remove('ao-vivo');
+  prev.innerHTML = `<img src="${window._selfie}" alt="Sua selfie"/>`;
+  document.getElementById('selfie-btn').textContent = '📷 Tirar outra';
+  document.getElementById('pad-erro').textContent = '';
+}
 async function receberSelfie(input){
   const arq = input.files && input.files[0]; if (!arq) return;
   try {
     window._selfie = await reduzirFoto(arq);
     document.getElementById('selfie-prev').innerHTML = `<img src="${window._selfie}" alt="Sua selfie"/>`;
-    document.getElementById('selfie-btn').firstChild.textContent = '📷 Tirar outra';
+    document.getElementById('selfie-btn').textContent = '📷 Tirar outra';
     document.getElementById('pad-erro').textContent = '';
   } catch (e) { document.getElementById('pad-erro').textContent = e.message; }
   input.value = '';
 }
 function alternarModoDesenho(){
   window._modoDesenho = !window._modoDesenho;
+  if (window._modoDesenho) pararCamera();
   document.getElementById('assin-selfie-box').style.display = window._modoDesenho ? 'none' : '';
   document.getElementById('assin-desenho-box').style.display = window._modoDesenho ? '' : 'none';
   document.getElementById('assin-alternar').textContent = window._modoDesenho ? 'Usar assinatura salva e selfie' : 'Sem câmera? Assinar desenhando';
@@ -2274,8 +2317,33 @@ function contestar(){
     await concluirEnvio('Contestação enviada ao apontador');
   });
 }
+// Confere no banco se o dia já foi medido (a informação do celular pode estar velha)
+async function statusMedicaoAtual(r){
+  if (r.frota_rdo_id==null) return 'nao_medido';
+  if (!online()) throw new Error('Precisa de internet pra corrigir um lançamento que já está no sistema (o app confere se o dia já foi medido).');
+  let st;
+  if (ehApontador()) {
+    const { data, error } = await sb.from('frota_rdo').select('status_medicao').eq('id', r.frota_rdo_id).maybeSingle();
+    if (error) throw new Error(traduzErro(error));
+    st = data ? (data.status_medicao || 'nao_medido') : 'excluido';
+  } else {
+    const d = await Repo.catalogoDoOperador();
+    const sv = (d.rdo||[]).find(x=>String(x.id)===String(r.frota_rdo_id));
+    st = sv ? (sv.status_medicao || 'nao_medido') : 'nao_medido';
+  }
+  return st;
+}
 async function corrigir(){
   const noSistema = rdo.fluxo==='no_sistema';
+  if (noSistema || rdo.frota_rdo_id!=null) {
+    let st;
+    try { st = await statusMedicaoAtual(rdo); } catch (e) { toast(e.message, 'erro'); return; }
+    if (st==='excluido') { toast('Este registro foi apagado no sistema.', 'erro'); await Sinc.rodar(true); return; }
+    if (st!=='nao_medido') {
+      rdo.status_medicao = st; const loc = Repo.rdo(rdo.id); if (loc) { loc.status_medicao = st; await Repo.salvar(loc, false); }
+      renderRdo(); toast('Este dia já entrou numa medição e não pode mais ser corrigido.', 'erro'); return;
+    }
+  }
   if (!confirm(noSistema ? 'Este lançamento já está no sistema. Corrigir anula as assinaturas; depois de assinado de novo, a versão corrigida substitui a do sistema. Continuar?'
                          : 'Corrigir anula as assinaturas, que vão precisar ser feitas de novo. Continuar?')) return;
   if (rdo.assinaturas) { rdo.assinaturas_anuladas = rdo.assinaturas_anuladas || []; rdo.assinaturas_anuladas.push(Object.assign({}, rdo.assinaturas, { anulada_em:new Date().toISOString(), anulada_por:sessao.nome })); }
