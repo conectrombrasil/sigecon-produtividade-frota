@@ -615,7 +615,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.8.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.9.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -736,6 +736,10 @@ const Repo = {
     ]);
     const erro = res.find(r=>r.error); if (erro) throw erro.error;
     const [obras, equips, listas, forns, ativos, vinculos] = res.map(r=>r.data||[]);
+    // obras de cada operador (se a tabela ainda não existir, segue sem esse filtro)
+    const rOb = await sb.from('frota_operador_obras').select('usuario_id,obra_id');
+    const obrasPorOp = {};
+    if (!rOb.error) (rOb.data||[]).forEach(x=>{ (obrasPorOp[x.usuario_id] = obrasPorOp[x.usuario_id] || new Set()).add(String(x.obra_id)); });
     const mob = {}; ativos.forEach(a=>{ if (a.equipamento_id && a.contratos?.obra_id) mob[a.equipamento_id] = a.contratos.obra_id; });
     // nomes dos operadores vinculados
     const idsOp = [...new Set(vinculos.map(v=>v.usuario_id))];
@@ -745,7 +749,9 @@ const Repo = {
       (data||[]).filter(u=>u.ativo!==false).forEach(u=>{ nomes[u.id] = { nome: u.nome, matricula: u.matricula || '' }; });
     }
     const opsPorEquip = {};
-    vinculos.filter(v=>nomes[v.usuario_id] || v.usuario_id===sessao.id).forEach(v=>{ (opsPorEquip[v.equipamento_id] = opsPorEquip[v.equipamento_id] || []).push({ id:v.usuario_id, nome:nomes[v.usuario_id]?.nome || 'Operador', matricula:nomes[v.usuario_id]?.matricula || '' }); });
+    // operador só aparece numa máquina se ela estiver numa obra dele (quem ainda não tem obra cadastrada, aparece)
+    const naObra = v=>{ const ob = obrasPorOp[v.usuario_id], om = mob[v.equipamento_id]; return !ob || !ob.size || (om!=null && ob.has(String(om))); };
+    vinculos.filter(v=>(nomes[v.usuario_id] || v.usuario_id===sessao.id) && naObra(v)).forEach(v=>{ (opsPorEquip[v.equipamento_id] = opsPorEquip[v.equipamento_id] || []).push({ id:v.usuario_id, nome:nomes[v.usuario_id]?.nome || 'Operador', matricula:nomes[v.usuario_id]?.matricula || '' }); });
     let equipamentos = equips.filter(e=>mob[e.id]).map(e=>({
       id:e.id, obra_id:mob[e.id], fornecedor_id:e.fornecedor_id, descricao:e.descricao,
       prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,

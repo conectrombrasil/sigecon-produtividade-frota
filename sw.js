@@ -1,7 +1,7 @@
 // Service worker: guarda o app no celular pra abrir sem internet.
 // A CADA PUBLICAÇÃO de uma versão nova, mude o número abaixo.
 // É isso que faz os celulares perceberem que há atualização.
-const VERSAO = 'fc-v3.8.0';
+const VERSAO = 'fc-v3.9.0';
 // Fotos dos tipos de equipamento (espaço público do Storage): ficam guardadas entre versões
 const FOTOS = 'fc-fotos';
 
