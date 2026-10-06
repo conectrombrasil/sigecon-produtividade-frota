@@ -513,6 +513,45 @@
   #impressao .sig-termo{min-height:34mm;}
   #impressao .sig-termo .sig-vazio{margin-top:7mm;border-top:none;border-bottom:1px solid #999;padding:0 0 1px;font-size:9px;color:#444;}
 
+  /* ===== Visão da semana ===== */
+  .visao-alt{display:flex;flex-shrink:0;background:var(--navy2);border:1px solid var(--border2);border-radius:999px;padding:3px;margin-right:4px;}
+  .visao-alt button{border:none;background:none;color:var(--text2);height:30px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;}
+  .visao-alt button.sel{background:var(--orange);color:#fff;}
+  .sem-cab{display:flex;align-items:center;gap:8px;margin:4px 0 12px;}
+  .sem-nav{width:40px;height:40px;border-radius:12px;border:1px solid var(--border2);background:var(--navy2);color:var(--text);font-size:20px;cursor:pointer;}
+  .sem-titulo{flex:1;text-align:center;font-weight:800;font-size:15px;}
+  .sem-hoje{height:40px;padding:0 12px;border-radius:12px;border:1px solid var(--border2);background:var(--navy2);color:var(--blue2);font-weight:700;cursor:pointer;}
+  .sem-grade{background:var(--navy2);border:1px solid var(--border);border-radius:var(--raio);padding:6px 10px 2px;}
+  .sem-linha{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;align-items:center;}
+  .sem-cabdias{position:sticky;top:calc(var(--topo-h) + var(--safe-top));background:var(--navy2);z-index:2;padding:4px 0 6px;}
+  .sem-bloco{padding:8px 0 10px;border-top:1px solid var(--border);}
+  .sem-bloco .sem-maq{margin:0 2px 7px;}
+  .sem-dia{text-align:center;font-size:10.5px;color:var(--text3);font-weight:700;line-height:1.2;}
+  .sem-dia b{display:block;font-size:13px;color:var(--text2);}
+  .sem-dia.s-hoje-txt b{color:var(--orange);}
+  .sem-maq{display:flex;align-items:center;gap:7px;min-width:0;}
+  .sem-maq .equip-ic{width:32px;height:32px;border-radius:8px;font-size:16px;}
+  .sem-maq-txt{min-width:0;}
+  .sem-maq-txt b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sem-maq-txt small{display:block;font-size:11.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sem-cel{height:42px;border-radius:9px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+  .sem-cel:active{transform:scale(.94);}
+  .sem-cel.s-hoje{box-shadow:0 0 0 2px var(--orange) inset;}
+  .s-ok{background:rgba(46,204,138,.18) !important;border-color:rgba(46,204,138,.5) !important;color:var(--ok-txt) !important;}
+  .s-andamento{background:rgba(46,123,196,.2) !important;border-color:rgba(90,166,238,.5) !important;}
+  .s-rascunho{background:rgba(224,168,48,.16) !important;border-color:rgba(224,168,48,.5) !important;color:var(--warn-txt) !important;}
+  .s-problema{background:rgba(224,85,85,.18) !important;border-color:rgba(224,85,85,.6) !important;color:var(--err-txt) !important;}
+  .s-medido{background:rgba(138,165,190,.14) !important;border-color:var(--border2) !important;font-size:12px !important;}
+  .s-falta{background:transparent !important;border:1.5px dashed rgba(224,168,48,.55) !important;}
+  .s-futuro{background:transparent !important;border-color:transparent !important;cursor:default !important;}
+  .sem-cel{position:relative;}
+  .s-acao::after{content:'';position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:var(--orange);border:2px solid var(--navy2);}
+  .sem-resumo{font-size:13px;color:var(--text2);margin:12px 2px 8px;}
+  .sem-resumo b{color:var(--warn-txt);}
+  .sem-legenda{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11.5px;color:var(--text3);margin:0 2px 10px;}
+  .sem-legenda i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;border:1px solid var(--border);margin-right:5px;font-style:normal;font-size:10px;font-weight:800;vertical-align:-4px;}
+  .sem-legenda i.leg-acao{width:12px;height:12px;border-radius:50%;background:var(--orange);border:none;}
+
 </style>
 </head>
 <body>
@@ -615,7 +654,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.9.1', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.10.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -1421,10 +1460,20 @@ function renderHome(){
   const cont = { todos:todos.length, acao:minhas.length, rascunho:todos.filter(r=>r.fluxo==='rascunho').length, concluidos:todos.filter(r=>r.fluxo==='no_sistema').length };
   const filtros = [ ['todos','Todos'], ['acao', ehOperador()?'Pra você':'Para validar'], ['rascunho','Rascunhos'], ['concluidos','No sistema'] ];
   if (filtroHome==='acao' && !minhas.length) filtroHome = 'todos';
-  document.getElementById('filtros-home').innerHTML = filtros.map(([k,n])=>
-    `<button class="chip-filtro ${filtroHome===k?'ativo':''}" onclick="filtroHome='${k}';renderHome()">${n}<span class="chip-n">${cont[k]||0}</span></button>`).join('');
+  const visao = Prefs.get().visao==='semana' ? 'semana' : 'lista';
+  const alternador = `<div class="visao-alt" role="tablist"><button class="${visao==='lista'?'sel':''}" onclick="mudarVisao('lista')">☰ Lista</button><button class="${visao==='semana'?'sel':''}" onclick="mudarVisao('semana')">▦ Semana</button></div>`;
+  document.getElementById('filtros-home').innerHTML = alternador + (visao==='lista' ? filtros.map(([k,n])=>
+    `<button class="chip-filtro ${filtroHome===k?'ativo':''}" onclick="filtroHome='${k}';renderHome()">${n}<span class="chip-n">${cont[k]||0}</span></button>`).join('') : '');
 
   const termo = (document.getElementById('busca-rdo').value||'').trim().toLowerCase();
+  if (visao==='semana') {
+    let h = avisosApp();
+    if (minhas.length) h += `<button class="faltam acao" onclick="mudarVisao('lista');filtroHome='acao';renderHome()"><span class="faltam-num">${minhas.length}</span>
+      <span class="faltam-txt">${ehOperador() ? (minhas.length>1?'lançamentos esperam você':'lançamento espera você') : (minhas.length>1?'lançamentos para validar':'lançamento para validar')}<small>Toque pra ver a lista.</small></span>
+      <span class="card-seta"><svg class="ic"><use href="#i-seta"/></svg></span></button>`;
+    document.getElementById('lista-home').innerHTML = h + htmlSemana(termo);
+    return;
+  }
   let lista = todos.filter(r=>filtroHome==='todos' || (filtroHome==='acao' ? precisaDeMim(r) : filtroHome==='rascunho' ? r.fluxo==='rascunho' : r.fluxo==='no_sistema'));
   if (termo) lista = lista.filter(r=>{ const e = Repo.equipamento(r.equipamento_id); return [e?.descricao, e?.prefixo, e?.placa, r.operador].join(' ').toLowerCase().includes(termo); });
   lista.sort((a,b)=> (precisaDeMim(b)-precisaDeMim(a)) || b.data.localeCompare(a.data) || (a.equipamento_id+'').localeCompare(b.equipamento_id+''));
@@ -1474,6 +1523,66 @@ function renderHome(){
   }
   document.getElementById('lista-home').innerHTML = html;
 }
+/* ===================================================================== */
+/* VISÃO DA SEMANA: máquinas × dias                                      */
+function mudarVisao(v){ Prefs.set('visao', v); renderHome(); window.scrollTo(0,0); }
+let _semanaRef = null;   // segunda-feira da semana mostrada
+function segundaDe(iso){ const d = new Date(iso+'T12:00:00'); const dw = (d.getDay()+6)%7; d.setDate(d.getDate()-dw); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function somaDias(iso, n){ const d = new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function mudarSemana(n){ _semanaRef = n===0 ? segundaDe(hojeISO()) : somaDias(_semanaRef || segundaDe(hojeISO()), 7*n); renderHome(); }
+// Situação de uma máquina num dia, pela visão de quem está usando o app
+function situacaoDia(equipId, data){
+  const r = Repo.rdos().find(x=>x.equipamento_id===equipId && x.data===data && x.fluxo);
+  if (r) {
+    if (travado(r)) return { cls:'s-medido', ic:'🔒', txt:'Medido', rec:r };
+    if (r.conflito || r.bloqueado_envio || r.fluxo==='devolvido' || r.fluxo==='contestado') return { cls:'s-problema', ic:'!', txt: r.fluxo==='devolvido'?'Devolvido':r.fluxo==='contestado'?'Contestado':'Não enviado', rec:r, acao:precisaDeMim(r) };
+    if (r.fluxo==='no_sistema') return { cls:'s-ok', ic:'✓', txt:'No sistema', rec:r };
+    if (r.fluxo==='rascunho') return { cls:'s-rascunho', ic:'✎', txt:'Rascunho', rec:r };
+    return { cls:'s-andamento', ic:'⏳', txt: r.fluxo==='aguardando_operador'?'Com o operador':r.fluxo==='aguardando_apontador'?'Com o apontador':'Indo pro sistema', rec:r, acao:precisaDeMim(r) };
+  }
+  const sv = Repo.doServidor(equipId, data, null);
+  if (sv) return (sv.status_medicao && sv.status_medicao!=='nao_medido') ? { cls:'s-medido', ic:'🔒', txt:'Medido (escritório)', sistema:true } : { cls:'s-ok', ic:'✓', txt:'No sistema (escritório)', sistema:true };
+  if (data > hojeISO()) return { cls:'s-futuro', ic:'', txt:'' };
+  return { cls:'s-falta', ic:'', txt:'Falta lançar' };
+}
+function htmlSemana(termo){
+  if (!_semanaRef) _semanaRef = segundaDe(hojeISO());
+  const dias = Array.from({length:7}, (_,i)=>somaDias(_semanaRef, i));
+  let equips = ehApontador() ? Repo.equipamentos(Prefs.get().obra) : Repo.equipamentos();
+  if (termo) equips = equips.filter(e=>[e.descricao, e.prefixo, e.placa].join(' ').toLowerCase().includes(termo));
+  const nomeDia = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  const hoje = hojeISO();
+  const fmt = iso => iso.slice(8)+'/'+iso.slice(5,7);
+  let faltam = 0;
+  const linhas = equips.map(e=>`<div class="sem-bloco">
+      <div class="sem-maq">${iconeEquip(e)}<div class="sem-maq-txt"><b>${esc(e.descricao)}</b>${idEquip(e)?`<small>${esc(idEquip(e))}</small>`:''}</div></div>
+      <div class="sem-linha">${dias.map(d=>{ const st = situacaoDia(e.id, d); if (st.cls==='s-falta') faltam++;
+        const clic = st.cls!=='s-futuro';
+        return `<button class="sem-cel ${st.cls} ${st.acao?'s-acao':''} ${d===hoje?'s-hoje':''}" ${clic?`onclick="tocarDiaSemana('${e.id}','${d}')"`:'disabled'} aria-label="${esc(e.descricao)}, ${fmt(d)}: ${esc(st.txt||'futuro')}" title="${fmt(d)} · ${esc(st.txt)}">${st.ic}</button>`; }).join('')}</div>
+    </div>`).join('');
+  return `<div class="sem-cab">
+      <button class="sem-nav" onclick="mudarSemana(-1)" aria-label="Semana anterior">‹</button>
+      <div class="sem-titulo">${fmt(dias[0])} a ${fmt(dias[6])}</div>
+      <button class="sem-nav" onclick="mudarSemana(1)" aria-label="Semana seguinte">›</button>
+      ${_semanaRef!==segundaDe(hoje) ? '<button class="sem-hoje" onclick="mudarSemana(0)">Hoje</button>' : ''}
+    </div>
+    ${equips.length ? `<div class="sem-grade">
+      <div class="sem-linha sem-cabdias">${dias.map((d,i)=>`<div class="sem-dia ${d===hoje?'s-hoje-txt':''}">${nomeDia[i]}<b>${d.slice(8)}</b></div>`).join('')}</div>
+      ${linhas}
+    </div>
+    <div class="sem-resumo">${faltam ? `<b>${faltam}</b> ${faltam>1?'dias faltando lançar':'dia faltando lançar'} nesta semana` : '✓ Nenhum dia faltando nesta semana'}</div>
+    <div class="sem-legenda"><span><i class="s-ok">✓</i>No sistema</span><span><i class="s-andamento">⏳</i>Em andamento</span><span><i class="s-rascunho">✎</i>Rascunho</span><span><i class="s-problema">!</i>Precisa de atenção</span><span><i class="s-medido">🔒</i>Medido</span><span><i class="s-falta"></i>Falta lançar</span><span><i class="leg-acao"></i>Precisa de você</span></div>`
+    : `<div class="vazio"><div class="vazio-icone">🚜</div>${termo ? 'Nenhuma máquina com essa busca.' : ehOperador() ? 'Nenhuma máquina vinculada a você ainda.' : 'Nenhuma máquina mobilizada nesta obra.'}</div>`}`;
+}
+function tocarDiaSemana(equipId, data){
+  const st = situacaoDia(equipId, data);
+  if (st.rec) return abrirRdo(st.rec.id);
+  if (st.sistema) { toast('Este dia já foi lançado pelo escritório, direto no sistema.'); return; }
+  // vazio: novo lançamento já com a máquina e o dia
+  novoLancamento(); if (!rdo) return;
+  rdo.data = data; aplicarMaquina(equipId); passoMax = 1; irPasso(1);
+}
+
 function abrirFaltamHoje(){
   const equips = ehApontador() ? Repo.equipamentos(Prefs.get().obra) : Repo.equipamentos();
   const faltam = equips.filter(e=>!Repo.lancadoNoDia(e.id, hojeISO()));
