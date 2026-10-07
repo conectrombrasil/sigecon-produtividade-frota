@@ -1,19 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1F4E86"/><stop offset="1" stop-color="#0B1929"/></linearGradient></defs>
-  <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <!-- prancheta -->
-  <rect x="150" y="104" width="212" height="290" rx="22" fill="#EEF3F8"/>
-  <rect x="206" y="84" width="100" height="46" rx="14" fill="#F15A24"/>
-  <path d="M190 176h132M190 216h96" stroke="#9DB4CA" stroke-width="16" stroke-linecap="round"/>
-  <!-- escavadeira -->
-  <g fill="#F15A24">
-    <rect x="182" y="292" width="104" height="44" rx="8"/>
-    <rect x="236" y="256" width="44" height="40" rx="6"/>
-    <rect x="172" y="336" width="128" height="26" rx="13" fill="#21406A"/>
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16304F"/><stop offset="1" stop-color="#0B1929"/>
+    </linearGradient>
+  </defs>
+  <rect id="bg" width="512" height="512" rx="112" fill="url(#fundo)"/>
+  <g id="maquina" transform="translate(256 262) scale(1.04) translate(-271 -260)">
+    <!-- chão -->
+    <rect x="70" y="392" width="372" height="10" rx="5" fill="#21406A"/>
+    <!-- esteira -->
+    <rect x="92" y="326" width="236" height="62" rx="31" fill="#0E1B2B" stroke="#5E7A99" stroke-width="8"/>
+    <circle cx="124" cy="357" r="15" fill="#5E7A99"/><circle cx="296" cy="357" r="15" fill="#5E7A99"/>
+    <circle cx="180" cy="357" r="9" fill="#3D5675"/><circle cx="240" cy="357" r="9" fill="#3D5675"/>
+    <!-- base giratória -->
+    <rect x="150" y="306" width="120" height="26" rx="6" fill="#2A3B52"/>
+    <!-- corpo -->
+    <path d="M100 252 h178 a14 14 0 0 1 14 14 v42 a10 10 0 0 1 -10 10 h-182 a10 10 0 0 1 -10 -10 v-46 a10 10 0 0 1 10 -10 z" fill="#F5A623"/>
+    <rect x="96" y="296" width="196" height="12" fill="#D9861A"/>
+    <!-- cabine -->
+    <path d="M120 252 v-68 a12 12 0 0 1 12 -12 h52 a14 14 0 0 1 13 9 l20 59 v12 z" fill="#F5A623"/>
+    <path d="M136 244 v-50 a6 6 0 0 1 6 -6 h36 a8 8 0 0 1 7.6 5.5 l15 44 a5 5 0 0 1 -4.7 6.5 z" fill="#9FD3F5"/>
+    <path d="M150 192 l-8 46" stroke="#D9F0FF" stroke-width="6" stroke-linecap="round" opacity=".7"/>
+    <!-- lança (boom) e braço -->
+    <path d="M262 270 L336 150" stroke="#F15A24" stroke-width="36" stroke-linecap="round" fill="none"/>
+    <path d="M336 150 L410 236" stroke="#F15A24" stroke-width="28" stroke-linecap="round" fill="none"/>
+    <!-- cilindro hidráulico -->
+    <path d="M238 236 L318 176" stroke="#C9D6E3" stroke-width="10" stroke-linecap="round"/>
+    <!-- articulações -->
+    <circle cx="262" cy="270" r="11" fill="#0E1B2B"/><circle cx="336" cy="150" r="12" fill="#0E1B2B"/>
+    <!-- caçamba -->
+    <path d="M402 226 C 440 236 456 268 450 302 C 446 326 428 342 404 346 L 392 346 L 386 336 L 378 340 L 372 330 L 364 332 L 362 320 C 380 316 396 306 402 290 C 410 270 408 248 396 236 Z" fill="#F15A24"/>
+    <path d="M450 302 C 446 326 428 342 404 346" stroke="#0E1B2B" stroke-width="6" fill="none" opacity=".3" stroke-linecap="round"/>
+    <circle cx="410" cy="236" r="10" fill="#0E1B2B"/>
   </g>
-  <path d="M276 270 L318 236 L338 282" fill="none" stroke="#F15A24" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M326 282h30l-10 22h-26z" fill="#F15A24"/>
-  <!-- selo de conferido -->
-  <circle cx="362" cy="376" r="62" fill="#2ECC8A" stroke="#0B1929" stroke-width="10"/>
-  <path d="M334 377l19 19 37-40" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
