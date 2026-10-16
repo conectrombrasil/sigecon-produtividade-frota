@@ -654,7 +654,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.10.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.11.0', DIAS_HISTORICO: 45 };
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -753,11 +753,11 @@ const Repo = {
         obras: d.obras || [], fornecedores: d.fornecedores || [],
         equipamentos: (d.equipamentos||[]).map(e=>({
           id:e.id, obra_id:e.obra_id, fornecedor_id:e.fornecedor_id, descricao:e.descricao,
-          prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
+          prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null, frota_tipo_id:e.frota_tipo_id!=null?String(e.frota_tipo_id):null,
           icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null,
           operadores:[{ id:sessao.id, nome:sessao.nome, matricula:sessao.matricula||'' }] })),
         eventos: eventos.map((ev,i)=>({ nome:ev.nome, codigo:ev.codigo||'', chave_fixa:ev.chave_fixa||null, cor:corDoEvento(ev,i) })),
-        atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
+        atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'', tipos:(l.frota_tipos||[]).map(String) })),
         locais: listas.filter(l=>l.tipo==='local').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
         combustiveis: ['Diesel S10','Diesel S500','Gasolina','Outro'],
       };
@@ -793,7 +793,7 @@ const Repo = {
     vinculos.filter(v=>(nomes[v.usuario_id] || v.usuario_id===sessao.id) && naObra(v)).forEach(v=>{ (opsPorEquip[v.equipamento_id] = opsPorEquip[v.equipamento_id] || []).push({ id:v.usuario_id, nome:nomes[v.usuario_id]?.nome || 'Operador', matricula:nomes[v.usuario_id]?.matricula || '' }); });
     let equipamentos = equips.filter(e=>mob[e.id]).map(e=>({
       id:e.id, obra_id:mob[e.id], fornecedor_id:e.fornecedor_id, descricao:e.descricao,
-      prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null,
+      prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null, frota_tipo_id:e.frota_tipo_id!=null?String(e.frota_tipo_id):null,
       icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null, operadores: opsPorEquip[e.id] || [],
     }));
     if (ehOperador()) equipamentos = equipamentos.filter(e=>e.operadores.some(o=>o.id===sessao.id));
@@ -802,7 +802,7 @@ const Repo = {
       versao: new Date().toISOString(), usuario_id: sessao.id,
       obras, fornecedores: forns, equipamentos,
       eventos: eventos.map((ev,i)=>({ nome:ev.nome, codigo:ev.codigo||'', chave_fixa:ev.chave_fixa||null, cor:corDoEvento(ev,i) })),
-      atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
+      atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'', tipos:(l.frota_tipos||[]).map(String) })),
       locais: listas.filter(l=>l.tipo==='local').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'' })),
       combustiveis: ['Diesel S10','Diesel S500','Gasolina','Outro'],
     };
@@ -1968,10 +1968,23 @@ function abrirOQueFoiFeito(){
     escolherAtividade();
   }, antes);
 }
-function escolherAtividade(){
+// Atividades da máquina: as ligadas ao tipo dela + as que valem para todos (sem tipo).
+// Tipo sem nenhuma atividade ligada (ou máquina sem tipo) vê a lista inteira, como antes.
+function atividadesDaMaquina(lista){
+  const tipo = Repo.equipamento(rdo.equipamento_id)?.frota_tipo_id;
+  if (!tipo || !lista.some(a=>(a.tipos||[]).includes(tipo))) return null;
+  return lista.filter(a=>!(a.tipos||[]).length || a.tipos.includes(tipo));
+}
+function escolherAtividade(todas){
   const lista = Repo.atividades(rdo.obra_id);
   if (!lista.length) return aplicarSelecao({ evento:'Em Atividade', atividade:'', local:'' });
-  escolherOpcao('Qual atividade?', lista.map(a=>({ valor:a.nome, rotulo:a.nome, manter:true, sel: ultimoApontamento?.atividade===a.nome })), atv=>escolherLocal(atv));
+  const minhas = todas ? null : atividadesDaMaquina(lista);
+  // a última atividade usada continua à mão mesmo se for de fora da lista da máquina
+  const ult = ultimoApontamento?.atividade;
+  const mostrar = minhas ? minhas.concat(ult && !minhas.some(a=>a.nome===ult) && lista.some(a=>a.nome===ult) ? [lista.find(a=>a.nome===ult)] : []) : lista;
+  const ops = mostrar.map(a=>({ valor:a.nome, rotulo:a.nome, manter:true, sel: ult===a.nome }));
+  if (minhas && minhas.length < lista.length) ops.push({ valor:'__todas', rotulo:'Ver todas as atividades', sub:(lista.length-mostrar.length)+' de outros equipamentos', ic:'📋', manter:true });
+  escolherOpcao(todas ? 'Qual atividade? (todas)' : 'Qual atividade?', ops, atv=>atv==='__todas' ? escolherAtividade(true) : escolherLocal(atv));
 }
 function escolherLocal(atv){
   const lista = Repo.locais(rdo.obra_id);
