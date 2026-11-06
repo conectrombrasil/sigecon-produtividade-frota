@@ -496,6 +496,7 @@
   #impressao .sig-img img{flex:1;min-width:0;}
   #impressao .sig-img .sig-selfie{flex:0 0 16mm;width:16mm;height:16mm;object-fit:cover;border-radius:2mm;}
   .selfie-foto video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);}
+  .selfie-foto.traseira video{transform:none;}
   .selfie-foto.ao-vivo{width:150px;height:150px;border-style:solid;border-color:var(--orange);}
   .banner-leitura{background:var(--navy3);border:1px solid var(--border2);border-radius:12px;padding:9px 12px;font-size:12.5px;color:var(--text2);margin-bottom:12px;font-weight:600;}
   .banner-leitura:empty{display:none;}
@@ -654,7 +655,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.11.0', DIAS_HISTORICO: 45 };
+const CONFIG = { VERSAO_APP: '3.12.1', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -732,6 +733,7 @@ const Repo = {
     this._rdos = await BD.todos('rdos') || [];
     this.cat = await BD.pegar('meta', 'catalogo') || null;
     this.servidor = await BD.pegar('meta', 'servidor') || [];
+    await OpsCampo.iniciar().catch(()=>{});
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
   },
   temCatalogo(){ return !!(this.cat && this.cat.obras && this.cat.usuario_id===sessao?.id); },
@@ -807,6 +809,7 @@ const Repo = {
       combustiveis: ['Diesel S10','Diesel S500','Gasolina','Outro'],
     };
     await BD.gravar('meta', this.cat, 'catalogo');
+    await OpsCampo.carregar().catch(()=>{});   // 3.12: operadores que assinam no celular do apontador
   },
   // Lançamentos oficiais recentes: evita duplicar e traz o status de medição
   async atualizarServidor(){
@@ -900,7 +903,7 @@ async function subirSelfies(r){
   for (const g of grupos) for (const papel of ['operador','apontador']) {
     const a = g[papel];
     if (!a || !a.selfie || !a.selfie.local) continue;
-    if (a.usuario_id!==sessao.id) { delete a.selfie.local; continue; }   // não é minha: não tenho como subir
+    if (a.usuario_id!==sessao.id && a.capturado_por!==sessao.id) { delete a.selfie.local; continue; }   // não foi tirada neste login: não tenho como subir
     const caminho = `${sessao.id}/${r.id}-${papel}-${new Date(a.em).getTime()}.jpg`;
     const blob = await (await fetch(a.selfie.local)).blob();
     const { error } = await sb.storage.from('frota-selfies').upload(caminho, blob, { contentType:'image/jpeg', upsert:false });
@@ -984,6 +987,9 @@ const Sinc = {
       const { data } = await sb.auth.getSession();
       if (!data.session) { if (!silencioso) toast('Sua sessão expirou. Saia e entre de novo pra enviar.', 'erro'); return; }
       await MinhaAssinatura.enviar().catch(()=>{});
+      if (ehApontador()) await OpsCampo.enviar().catch(()=>{});
+      // operadores e assinaturas feitos em outros celulares: atualiza a cada 5 min (ou na hora, pelo menu Atualizar)
+      if (ehApontador() && Date.now() - (OpsCampo._ult||0) > 300000) await OpsCampo.carregar().catch(()=>{});
       const e1 = await this.empurrar();
       await this.puxar();
       let foram = 0;
@@ -1363,6 +1369,7 @@ async function carregarUsuario(){
   const perfilGlobal = u.perfis?.nome;
   if (perfilGlobal==='fornecedor' || u.fornecedor_id) throw new Error('sem_acesso');
   let papel = null;
+  sessao.admin = perfilGlobal==='admin';
   if (perfilGlobal==='admin') papel = 'apontador';
   else {
     const { data:gf, error:eM } = await sb.from('usuario_modulos').select('perfil').eq('usuario_id', sessao.id).eq('modulo','gestao_frota').maybeSingle();
@@ -1816,7 +1823,7 @@ function sugerirMedidor(){
 function escolherOperadorVinculado(uid, silencioso){
   const e = Repo.equipamento(rdo.equipamento_id); const o = e?.operadores.find(x=>x.id===uid);
   if (!o) { if (uid===rdo.operador_usuario_id && !silencioso) { autosalvar(); renderRdo(); } return; }
-  rdo.operador = o.nome; rdo.matricula = o.matricula || rdo.matricula; rdo.operador_usuario_id = o.id;
+  rdo.operador = o.nome; rdo.matricula = o.matricula || rdo.matricula; rdo.operador_usuario_id = o.id; rdo.operador_campo_id = null;
   if (!silencioso) { autosalvar(); renderRdo(); }
 }
 
@@ -2145,7 +2152,7 @@ function passoAssinar(){
   const ops = [...(e?.operadores || [])];
   if (rdo.operador_usuario_id && !ops.some(o=>o.id===rdo.operador_usuario_id)) ops.push({ id:rdo.operador_usuario_id, nome:rdo.operador||'Operador', matricula:rdo.matricula||'' });
   const opSel = ops.find(o=>o.id===rdo.operador_usuario_id);
-  const modo = window._modoAssin || (opSel ? 'app' : 'sem');
+  const modo = window._modoAssin || (rdo.operador_campo_id && podeAssinarAqui() ? 'aqui' : opSel ? 'app' : 'sem');
   return `<div class="passo-titulo">Assinatura</div>
     <div class="passo-desc">Você assina como apontador. ${opSel ? `Depois, <b>${esc(opSel.nome)}</b> recebe no app pra confirmar ou contestar.` : 'Escolha como fica a assinatura do operador.'}</div>${resumo}
     <div class="assin-bloco">
@@ -2153,13 +2160,15 @@ function passoAssinar(){
       <div class="opcao-lista" style="margin-top:10px">
         ${ops.length ? ops.map(o=>`<button class="${modo==='app'&&rdo.operador_usuario_id===o.id?'sel':''}" onclick="window._modoAssin='app';escolherOperadorVinculado('${o.id}')"><span class="opcao-ic">📲</span><div>${esc(o.nome)} confirma no app dele<small>O lançamento vai para o celular do operador assinar</small></div></button>`).join('')
           : `<div class="ajuda" style="margin:0 0 10px">Nenhum operador com app vinculado a esta máquina.</div>`}
+        ${podeAssinarAqui() ? `<button class="${modo==='aqui'?'sel':''}" onclick="window._modoAssin='aqui';renderRdo()"><span class="opcao-ic">🤝</span><div>Operador assina neste celular<small>Ele confirma aqui, com foto e assinatura, sem precisar do app</small></div></button>` : ''}
         <button class="${modo==='sem'?'sel':''}" onclick="window._modoAssin='sem';renderRdo()"><span class="opcao-ic">✍️</span><div>Sem assinatura do operador<small>Ex: operador do fornecedor, sem o app</small></div></button>
       </div>
+      ${modo==='aqui' ? painelAssinaAqui() : ''}
       ${modo==='sem' ? `<div class="campo" style="margin-top:6px"><span class="rotulo">Por que o operador não vai assinar? *</span><textarea id="as-motivo" placeholder="Ex: operador do fornecedor, não tem o app">${esc(window._motivoSem||'')}</textarea></div>` : ''}
     </div>
     <div class="nota-trilha">Ao assinar, o app registra data e hora, localização, o aparelho e um código do conteúdo. Se algo for corrigido depois, as assinaturas são anuladas.</div>
     <div class="erro-msg" id="as-erro" style="margin-top:12px"></div>
-    <div class="barra-acao"><button class="btn" onclick="assinarComoApontador()">${modo==='app' ? 'Assinar e enviar ao operador' : 'Assinar e enviar ao sistema'}</button></div>`;
+    <div class="barra-acao"><button class="btn" onclick="assinarComoApontador()">${modo==='app' ? 'Assinar e enviar ao operador' : modo==='aqui' ? 'Colher a confirmação do operador' : 'Assinar e enviar ao sistema'}</button></div>`;
 }
 
 /* ===================================================================== */
@@ -2298,6 +2307,7 @@ function reduzirFoto(arquivo){
 }
 // Assinar: assinatura salva + selfie. Sem câmera, dá pra assinar desenhando.
 async function abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar){
+  window._camFacing = 'user';
   const salva = await MinhaAssinatura.obter();
   if (!salva) return abrirCadastroAssinatura(()=>abrirAssinatura(titulo, declaracao, rotuloBtn, aoAssinar));
   window._selfie = null; window._modoDesenho = false;
@@ -2345,7 +2355,7 @@ async function abrirCamera(){
   erro.textContent = '';
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     try {
-      _cam = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ ideal:640 }, height:{ ideal:640 } }, audio:false });
+      _cam = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: window._camFacing || 'user', width:{ ideal:640 }, height:{ ideal:640 } }, audio:false });
       prev.classList.add('ao-vivo');
       prev.innerHTML = '<video id="selfie-video" autoplay playsinline muted></video>';
       const v = document.getElementById('selfie-video'); v.srcObject = _cam; await v.play().catch(()=>{});
@@ -2415,7 +2425,8 @@ function assinarComoOperador(){
 function assinarComoApontador(){
   if (verificacoes().some(a=>a.bloqueia)) { document.getElementById('as-erro').textContent = 'Há pendências na revisão.'; return; }
   const e = Repo.equipamento(rdo.equipamento_id);
-  const modo = window._modoAssin || ((e?.operadores||[]).some(o=>o.id===rdo.operador_usuario_id) ? 'app' : 'sem');
+  const modo = window._modoAssin || (rdo.operador_campo_id && podeAssinarAqui() ? 'aqui' : (e?.operadores||[]).some(o=>o.id===rdo.operador_usuario_id) ? 'app' : 'sem');
+  if (modo==='aqui') return assinarAqui();
   let motivo = '';
   if (modo==='sem') { motivo = (document.getElementById('as-motivo')?.value||'').trim(); window._motivoSem = motivo;
     if (motivo.length<5) { document.getElementById('as-erro').textContent = 'Explique por que o operador não vai assinar.'; return; } }
@@ -2428,13 +2439,239 @@ function assinarComoApontador(){
   });
 }
 
+/* =====================================================================
+   OPERADOR ASSINA NO CELULAR DO APONTADOR (v3.12 · para todos os apontadores)
+   Operador sem usuário/e-mail: frota_operadores_campo (nome, matrícula, próprio/terceiro).
+   1ª vez: ele desenha a assinatura (fica guardada, pode refazer). Depois: escolher e tirar a foto.
+   Fica tudo no celular até ter sinal (fila "opsCampoPend").
+   ===================================================================== */
+const OpsCampo = {
+  ok:false, lista:[], usos:[], colabs:[], pend:[],
+  async iniciar(){
+    const m = await BD.pegar('meta', 'opsCampo');
+    if (m) { this.ok = !!m.ok; this.lista = m.lista||[]; this.usos = m.usos||[]; this.colabs = m.colabs||[]; this._dono = m.usuario_id; }
+    this.pend = await BD.pegar('meta', 'opsCampoPend') || [];
+  },
+  async carregar(){
+    const [r1, r2, r3] = await Promise.all([
+      sb.from('frota_operadores_campo').select('id,nome,matricula,terceiro,fornecedor_id,empresa,colaborador_id,assinatura,assinatura_em,consentimento_em,ativo,criado_por'),
+      sb.from('frota_operador_campo_equip').select('operador_id,equipamento_id,ultimo_uso'),
+      sb.from('colaboradores').select('id,nome,matricula,ativo').order('nome'),
+    ]);
+    if (r1.error || r2.error) { this.ok = false; await this.gravarLocal(); return; }   // SQL ainda não rodado: a opção não aparece
+    const pOps = this.pend.filter(p=>p.tipo==='op').map(p=>p.dado), pUsos = this.pend.filter(p=>p.tipo==='uso').map(p=>p.dado);
+    this.lista = [...(r1.data||[]).filter(o=>!pOps.some(p=>p.id===o.id)), ...pOps];
+    this.usos = [...(r2.data||[]).filter(u=>!pUsos.some(p=>p.operador_id===u.operador_id && p.equipamento_id===u.equipamento_id)), ...pUsos];
+    this.colabs = (r3.data||[]).filter(c=>c.ativo!==false && c.matricula);
+    this.ok = true; this._dono = sessao.id; this._ult = Date.now();
+    await this.gravarLocal();
+  },
+  async gravarLocal(){
+    await BD.gravar('meta', { usuario_id:sessao?.id, ok:this.ok, lista:this.lista, usos:this.usos, colabs:this.colabs }, 'opsCampo');
+    await BD.gravar('meta', this.pend, 'opsCampoPend');
+  },
+  op(id){ return this.lista.find(o=>o.id===id); },
+  daMaquina(eqId){
+    return this.usos.filter(u=>u.equipamento_id===eqId).sort((a,b)=>String(b.ultimo_uso).localeCompare(String(a.ultimo_uso)))
+      .map(u=>this.op(u.operador_id)).filter(o=>o && o.ativo!==false);
+  },
+  empresa(o){ return o.terceiro ? (o.empresa || (o.fornecedor_id ? Repo.fornecedor(o.fornecedor_id).razao_social : '') || 'terceiro') : 'próprio'; },
+  async salvarOp(o){
+    o.atualizado_em = new Date().toISOString();
+    const i = this.lista.findIndex(x=>x.id===o.id); if (i>=0) this.lista[i] = o; else this.lista.push(o);
+    this.pend = this.pend.filter(p=>!(p.tipo==='op' && p.dado.id===o.id));
+    this.pend.unshift({ tipo:'op', dado: JSON.parse(JSON.stringify(o)) });   // operador sobe antes dos usos dele
+    await this.gravarLocal(); this.enviar().catch(()=>{});
+  },
+  async usou(opId, eqId){
+    const agora = new Date().toISOString();
+    const u = this.usos.find(x=>x.operador_id===opId && x.equipamento_id===eqId);
+    if (u) u.ultimo_uso = agora; else this.usos.push({ operador_id:opId, equipamento_id:eqId, ultimo_uso:agora });
+    this.pend = this.pend.filter(p=>!(p.tipo==='uso' && p.dado.operador_id===opId && p.dado.equipamento_id===eqId));
+    this.pend.push({ tipo:'uso', dado:{ operador_id:opId, equipamento_id:eqId, ultimo_uso:agora } });
+    await this.gravarLocal(); this.enviar().catch(()=>{});
+  },
+  async enviar(){
+    if (!online() || !this.pend.length || this._enviando) return;
+    this._enviando = true;
+    try {
+      const resto = [];
+      for (const p of this.pend) {
+        const d = p.dado;
+        const { error } = p.tipo==='op'
+          ? await sb.from('frota_operadores_campo').upsert({ id:d.id, nome:d.nome, matricula:d.matricula, terceiro:!!d.terceiro,
+              fornecedor_id:d.fornecedor_id||null, empresa:d.empresa||null, colaborador_id:d.colaborador_id||null,
+              assinatura:d.assinatura||null, assinatura_em:d.assinatura_em||null, consentimento_em:d.consentimento_em||null,
+              ativo:d.ativo!==false, criado_por:d.criado_por||sessao.id, atualizado_por:sessao.id })
+          : await sb.from('frota_operador_campo_equip').upsert(d);
+        if (error) { p.erro = /duplicate|23505/i.test((error.message||'')+(error.code||'')) ? 'Já existe outro operador com essa matrícula.' : traduzErro(error); resto.push(p); }
+      }
+      this.pend = resto; await this.gravarLocal();
+      if (resto.length) toast('Operador não enviado: '+(resto[0].erro||'erro'), 'erro');
+    } finally { this._enviando = false; }
+  },
+};
+const podeAssinarAqui = ()=> ehApontador() && OpsCampo.ok && (!CONFIG.ASSINA_AQUI_SO_ADMIN || sessao?.admin);
+
+function escolherOpCampo(id){
+  const o = OpsCampo.op(id); if (!o) return;
+  rdo.operador_campo_id = o.id; rdo.operador = o.nome; rdo.matricula = o.matricula || ''; rdo.operador_usuario_id = null;
+  window._modoAssin = 'aqui'; fecharModal(); autosalvar(); renderRdo();
+}
+function painelAssinaAqui(){
+  const sel = rdo.operador_campo_id ? OpsCampo.op(rdo.operador_campo_id) : null;
+  const lista = OpsCampo.daMaquina(rdo.equipamento_id);
+  if (sel && !lista.some(o=>o.id===sel.id)) lista.unshift(sel);
+  const item = o=>`<button class="${sel&&sel.id===o.id?'sel':''}" onclick="escolherOpCampo('${o.id}')"><span class="opcao-ic">👷</span><div>${esc(o.nome)}<small>Matrícula ${esc(o.matricula||'—')} · ${esc(OpsCampo.empresa(o))}${o.assinatura?'':' · ainda sem assinatura'}</small></div></button>`;
+  return `<div class="campo" style="margin-top:8px"><span class="rotulo">${lista.length ? 'Operadores desta máquina (o mais recente em cima)' : 'Quem vai assinar?'}</span>
+    <div class="opcao-lista">${lista.map(item).join('')}
+      <button onclick="abrirBuscaOpCampo()"><span class="opcao-ic">🔎</span><div>${lista.length?'Outro operador':'Escolher o operador'}<small>Pela lista de colaboradores, pela matrícula ou cadastrando</small></div></button>
+    </div>
+    ${sel ? `<button class="link-acao" onclick="abrirFormOpCampo('${sel.id}')">Corrigir dados de ${esc(sel.nome)}</button>` : ''}</div>`;
+}
+function abrirBuscaOpCampo(){
+  abrirModal('Quem é o operador?', `<div class="campo"><input type="search" id="opc-busca" placeholder="Nome ou matrícula" autocomplete="off" oninput="listarBuscaOpCampo()"/></div>
+    <div class="opcao-lista" id="opc-lista"></div>
+    <button class="btn btn-secundario" style="margin-top:10px" onclick="abrirFormOpCampo()">Não achou? Cadastrar à mão</button>`);
+  listarBuscaOpCampo();
+  setTimeout(()=>document.getElementById('opc-busca')?.focus(), 50);
+}
+function listarBuscaOpCampo(){
+  const q = (document.getElementById('opc-busca')?.value||'').trim().toLowerCase();
+  const casa = (nome, mat)=> !q || String(nome||'').toLowerCase().includes(q) || String(mat||'').toLowerCase()===q || String(mat||'').toLowerCase().startsWith(q);
+  const ops = OpsCampo.lista.filter(o=>o.ativo!==false && casa(o.nome, o.matricula));
+  const ligados = new Set(OpsCampo.lista.map(o=>o.colaborador_id).filter(Boolean));
+  const proprios = new Set(OpsCampo.lista.filter(o=>!o.terceiro).map(o=>String(o.matricula).trim().toLowerCase()));
+  const colabs = OpsCampo.colabs.filter(c=>!ligados.has(c.id) && !proprios.has(String(c.matricula).trim().toLowerCase()) && casa(c.nome, c.matricula));
+  const html = ops.slice(0, 30).map(o=>`<button onclick="escolherOpCampo('${o.id}')"><span class="opcao-ic">👷</span><div>${esc(o.nome)}<small>Matrícula ${esc(o.matricula||'—')} · ${esc(OpsCampo.empresa(o))}</small></div></button>`).join('')
+    + colabs.slice(0, 30).map(c=>`<button onclick="usarColaborador('${c.id}')"><span class="opcao-ic">🪪</span><div>${esc(c.nome)}<small>Matrícula ${esc(c.matricula)} · colaborador</small></div></button>`).join('');
+  document.getElementById('opc-lista').innerHTML = html || `<div class="ajuda">Ninguém encontrado${q?' com "'+esc(q)+'"':''}.</div>`;
+}
+async function usarColaborador(cid){
+  const c = OpsCampo.colabs.find(x=>x.id===cid); if (!c) return;
+  const o = { id:uuid(), nome:c.nome, matricula:String(c.matricula), terceiro:false, fornecedor_id:null, empresa:null, colaborador_id:c.id,
+    assinatura:null, assinatura_em:null, consentimento_em:null, ativo:true, criado_por:sessao.id };
+  await OpsCampo.salvarOp(o);
+  escolherOpCampo(o.id);
+}
+function abrirFormOpCampo(id){
+  const o = id ? OpsCampo.op(id) : null;
+  const forns = (Repo.cat?.fornecedores||[]).map(f=>`<option value="${esc(f.razao_social)}"></option>`).join('');
+  const emp = o ? (o.empresa || (o.fornecedor_id ? Repo.fornecedor(o.fornecedor_id).razao_social : '')) : '';
+  abrirModal(o ? 'Corrigir operador' : 'Cadastrar operador', `
+    <div class="campo"><span class="rotulo">Nome *</span><input type="text" id="opf-nome" value="${esc(o?.nome||'')}" autocapitalize="words" ${o?.colaborador_id?'disabled':''}/></div>
+    <div class="campo"><span class="rotulo">Matrícula *</span><input type="text" id="opf-mat" value="${esc(o?.matricula||'')}" ${o?.colaborador_id?'disabled':''}/></div>
+    ${o?.colaborador_id ? '<div class="ajuda" style="margin-top:-4px">Ligado à lista de Colaboradores: nome e matrícula vêm de lá.</div>' : ''}
+    <label class="consentimento" style="margin:8px 0"><input type="checkbox" id="opf-terc" ${o?.terceiro?'checked':''} ${o?.colaborador_id?'disabled':''} onchange="document.getElementById('opf-emp-box').style.display=this.checked?'':'none'"/><span>É terceiro (de outra empresa)</span></label>
+    <div class="campo" id="opf-emp-box" style="${o?.terceiro?'':'display:none'}"><span class="rotulo">Empresa *</span><input type="text" id="opf-emp" list="opf-forns" value="${esc(emp)}" placeholder="Nome da empresa"/><datalist id="opf-forns">${forns}</datalist></div>
+    <div class="erro-msg" id="opf-erro"></div>
+    <button class="btn" style="margin-top:12px" onclick="salvarFormOpCampo(${o?`'${o.id}'`:'null'})">${o?'Salvar':'Cadastrar e escolher'}</button>`);
+}
+async function salvarFormOpCampo(id){
+  const o0 = id ? OpsCampo.op(id) : null;
+  const nome = (document.getElementById('opf-nome').value||'').trim().replace(/\s+/g, ' ');
+  const mat = (document.getElementById('opf-mat').value||'').trim();
+  const terc = document.getElementById('opf-terc').checked;
+  const empTxt = (document.getElementById('opf-emp')?.value||'').trim();
+  const erro = document.getElementById('opf-erro');
+  if (nome.length < 3) { erro.textContent = 'Informe o nome.'; return; }
+  if (!mat) { erro.textContent = 'Informe a matrícula.'; return; }
+  if (terc && !empTxt) { erro.textContent = 'Informe a empresa do terceiro.'; return; }
+  const forn = terc ? (Repo.cat?.fornecedores||[]).find(f=>String(f.razao_social).toLowerCase()===empTxt.toLowerCase()) : null;
+  const chave = x=>[!!x.terceiro, x.terceiro ? (x.fornecedor_id || String(x.empresa||'').toLowerCase()) : '', String(x.matricula).trim().toLowerCase()].join('|');
+  const novo = Object.assign({}, o0 || { id:uuid(), assinatura:null, assinatura_em:null, consentimento_em:null, ativo:true, criado_por:sessao.id, colaborador_id:null },
+    { nome, matricula:mat, terceiro:terc, fornecedor_id: forn ? forn.id : null, empresa: terc && !forn ? empTxt : null });
+  if (!terc && !novo.colaborador_id) { const c = OpsCampo.colabs.find(x=>String(x.matricula).trim().toLowerCase()===mat.toLowerCase()); if (c) { novo.colaborador_id = c.id; novo.nome = c.nome; } }
+  const igual = OpsCampo.lista.find(x=>x.id!==novo.id && chave(x)===chave(novo));
+  if (igual) { if (!o0) { escolherOpCampo(igual.id); toast('Esse operador já estava cadastrado', 'sucesso'); return; } erro.textContent = 'Já existe outro operador com essa matrícula.'; return; }
+  await OpsCampo.salvarOp(novo);
+  if (o0) { if (rdo && rdo.operador_campo_id===novo.id) { rdo.operador = novo.nome; rdo.matricula = novo.matricula; autosalvar(); } fecharModal(); renderRdo(); toast('Dados corrigidos', 'sucesso'); }
+  else escolherOpCampo(novo.id);
+}
+// 1ª vez (ou refazer): o operador desenha a assinatura no celular do apontador
+function abrirCadastroAssinaturaOp(op, depois){
+  abrirModal('Assinatura de '+op.nome, `<div class="passo-desc">Peça para <b>${esc(op.nome)}</b> fazer a assinatura dele. Ela fica guardada: nas próximas vezes, basta tirar a foto.</div>
+    <div class="pad-wrap"><canvas id="pad-op" aria-label="Área de assinatura"></canvas><div class="pad-linha"></div><div class="pad-dica">Assine aqui com o dedo</div>
+      <button class="pad-limpar" onclick="window._pad.limpar()">Limpar</button></div>
+    <label class="consentimento"><input type="checkbox" id="op-consent"/><span>Eu, ${esc(op.nome)}, concordo que esta assinatura seja usada nos lançamentos de produtividade que eu confirmar neste aparelho, junto com uma foto minha, a data, a hora e a localização, para comprovar que fui eu.</span></label>
+    <div class="erro-msg" id="op-erro" style="margin-top:10px"></div>
+    <button class="btn" id="op-btn" style="margin-top:12px">Salvar assinatura</button>`);
+  requestAnimationFrame(()=>{
+    window._pad = new PadAssinatura(document.getElementById('pad-op'));
+    document.getElementById('op-btn').onclick = async ()=>{
+      if (!window._pad.valida()) { document.getElementById('op-erro').textContent = 'A assinatura precisa ser feita no quadro.'; return; }
+      if (!document.getElementById('op-consent').checked) { document.getElementById('op-erro').textContent = 'O operador precisa marcar que concorda.'; return; }
+      const agora = new Date().toISOString();
+      op.assinatura = window._pad.imagem(); op.assinatura_em = agora; op.consentimento_em = agora;
+      await OpsCampo.salvarOp(op);
+      toast('Assinatura de '+op.nome+' guardada', 'sucesso');
+      if (depois) depois(); else fecharModal();
+    };
+  });
+}
+// Confirmação do operador: assinatura guardada + foto dele tirada agora
+function abrirConfirmacaoOperador(op, aoConfirmar){
+  window._selfie = null; window._camFacing = 'environment';
+  abrirModal('Confirmação do operador', `<div class="assin-sub" style="margin-bottom:10px">${esc(op.nome)}, matrícula ${esc(op.matricula||'—')} · ${esc(OpsCampo.empresa(op))}</div>
+    <div class="selfie-linha">
+      <div class="selfie-foto traseira" id="selfie-prev"><span>📷</span></div>
+      <div style="flex:1;min-width:0"><div class="assin-img"><img src="${op.assinatura}" alt="Assinatura de ${esc(op.nome)}"/></div><div class="ajuda" style="margin:6px 0 0">Assinatura guardada</div></div>
+    </div>
+    <button class="btn btn-secundario" style="margin-top:12px" id="selfie-btn" onclick="acaoSelfie()">📷 Tirar foto do operador</button>
+    <input type="file" id="selfie-arquivo" accept="image/*" capture="environment" hidden onchange="receberSelfie(this)"/>
+    <button class="link-acao" onclick="trocarCameraOp()">Trocar câmera (frente/trás)</button>
+    <div class="declaracao">Eu, ${esc(op.nome)}, confirmo que as informações deste lançamento estão corretas.</div>
+    <button class="link-acao" id="op-refazer">Refazer a assinatura de ${esc(op.nome)}</button>
+    <div class="erro-msg" id="pad-erro" style="margin-top:10px"></div>
+    <button class="btn" id="pad-btn" style="margin-top:12px">Operador confirma</button>`);
+  document.getElementById('op-refazer').onclick = ()=>{ pararCamera(); abrirCadastroAssinaturaOp(op, ()=>abrirConfirmacaoOperador(op, aoConfirmar)); };
+  document.getElementById('pad-btn').onclick = async ()=>{
+    if (!window._selfie && _cam) capturarSelfie();
+    if (!window._selfie) { document.getElementById('pad-erro').textContent = 'Tire a foto do operador para confirmar.'; return; }
+    const foto = window._selfie; pararCamera(); window._camFacing = 'user';
+    const btn = document.getElementById('pad-btn'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Registrando';
+    try { await aoConfirmar(foto); }
+    catch (e) { btn.disabled = false; btn.textContent = 'Operador confirma'; document.getElementById('pad-erro').textContent = e.message==='sem_crypto' ? 'Abra o app pelo endereço https pra assinar.' : (e.message || 'Não foi possível registrar.'); }
+  };
+}
+function trocarCameraOp(){
+  window._camFacing = window._camFacing==='user' ? 'environment' : 'user';
+  const prev = document.getElementById('selfie-prev'); if (prev) prev.classList.toggle('traseira', window._camFacing==='environment');
+  const arq = document.getElementById('selfie-arquivo'); if (arq) arq.setAttribute('capture', window._camFacing);
+  if (_cam) { pararCamera(); abrirCamera(); }
+}
+async function montarAssinaturaOp(rec, op, foto){
+  const [gps, hash] = await Promise.all([pegarLocalizacao(), sha256(conteudoCanonico(rec))]);
+  return { usuario_id:null, operador_campo_id:op.id, nome:op.nome, matricula:op.matricula||'', empresa: op.terceiro ? OpsCampo.empresa(op) : null,
+    imagem:op.assinatura, metodo:'assinatura_salva_e_foto_no_celular_do_apontador', selfie:{ local:foto },
+    capturado_por:sessao.id, capturado_por_nome:sessao.nome,
+    em:new Date().toISOString(), fuso:Intl.DateTimeFormat().resolvedOptions().timeZone, gps, hash, codigo:codigoCurto(hash),
+    aparelho:{ id:idAparelho(), descricao:descricaoAparelho(), versao_app:CONFIG.VERSAO_APP } };
+}
+async function assinarAqui(){
+  const op = rdo.operador_campo_id && OpsCampo.op(rdo.operador_campo_id);
+  if (!op) { document.getElementById('as-erro').textContent = 'Escolha o operador que vai assinar.'; return; }
+  if (!op.assinatura) return abrirCadastroAssinaturaOp(op, ()=>assinarAqui());
+  abrirConfirmacaoOperador(op, async foto=>{
+    const assOp = await montarAssinaturaOp(rdo, op, foto);
+    abrirAssinatura('Sua assinatura', 'Declaro que acompanhei e registrei este lançamento e que o operador confirmou neste aparelho.', 'Assinar', async dados=>{
+      rdo.assinaturas = { operador: assOp, apontador: await montarAssinatura(rdo, dados), recusa_operador:null };
+      rdo.fluxo = 'pronto'; rdo.mensagem = ''; rdo.conflito = false; rdo.bloqueado_envio = false;
+      registrar(rdo, 'operador assinou no celular do apontador', op.nome + (op.matricula ? ' (matrícula '+op.matricula+')' : ''));
+      await OpsCampo.usou(op.id, rdo.equipamento_id);
+      window._modoAssin = null;
+      await concluirEnvio('Assinado pelos dois. Indo pro sistema');
+    });
+  });
+}
+
 /* ===================================================================== */
 /* PAINEL DE UM LANÇAMENTO JÁ ENVIADO (ver, validar, confirmar, corrigir) */
 function blocoAssinatura(papel, a){
   if (!a) return '';
   const gps = a.gps && a.gps.lat!=null ? `<a href="https://maps.google.com/?q=${a.gps.lat},${a.gps.lng}" target="_blank" rel="noopener">${a.gps.lat}, ${a.gps.lng}</a> (±${a.gps.precisao_m} m)` : 'não registrada';
   const foto = a.selfie ? `<div class="selfie-foto pequena" data-selfie='${esc(JSON.stringify(a.selfie))}'><span>📷</span></div>` : '';
-  return `<div class="assinante"><div class="assinante-nome">${esc(a.nome)} <small>${papel}${a.matricula?', '+esc(a.matricula):''}${a.metodo==='assinatura_salva_e_selfie'?' · assinatura salva + selfie':''}</small></div>
+  return `<div class="assinante"><div class="assinante-nome">${esc(a.nome)} <small>${papel}${a.matricula?', '+esc(a.matricula):''}${a.metodo==='assinatura_salva_e_selfie'?' · assinatura salva + selfie':''}${a.capturado_por_nome?' · confirmou no celular de '+esc(a.capturado_por_nome):''}${a.empresa?' · '+esc(a.empresa):''}</small></div>
     <div class="selfie-linha">${foto}<div class="assin-img" style="flex:1;min-width:0"><img src="${a.imagem}" alt="Assinatura de ${esc(a.nome)}"/></div></div>
     <div class="trilha">${esc(fmtHoraCompleta(a.em))} · local: ${gps} · ${esc(a.aparelho?.descricao||'')}<br/>Código <span class="codigo">${esc(a.codigo)}</span>
     <span class="integridade" data-hash="${esc(a.hash)}"><span class="spinner"></span></span></div></div>`;
