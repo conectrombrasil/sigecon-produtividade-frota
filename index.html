@@ -655,7 +655,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.12.1', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
+const CONFIG = { VERSAO_APP: '3.13.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -2048,11 +2048,9 @@ function passoOcorrencias(){
         <div class="campo"><span class="rotulo">Fim</span><input type="time" id="ma-fim"/></div></div>
       <div class="campo"><span class="rotulo">${rot} (${un})</span><input type="text" inputmode="decimal" id="ma-med"/></div>
       <div class="erro-msg" id="ma-erro"></div><button class="btn-add-linha" onclick="addManutencao()">+ Adicionar ocorrência</button>`)}
-    ${ehApontador() ? secao('aj','💰','Acréscimos e descontos', rdo.ajustes.length, `<div class="item-lista">${ajs}</div>
-      <div class="toggle" id="aj-tipo"><button class="sel" data-v="desconto" onclick="selToggle(this)">Desconto</button><button data-v="acrescimo" onclick="selToggle(this)">Acréscimo</button></div>
-      <div class="campo"><span class="rotulo">Descrição *</span><input type="text" id="aj-desc" placeholder="Ex: para-brisa, multa"/></div>
-      <div class="campo"><span class="rotulo">Valor (R$) *</span><input type="text" inputmode="decimal" id="aj-valor"/></div>
-      <div class="erro-msg" id="aj-erro"></div><button class="btn-add-linha" onclick="addAjuste()">+ Adicionar</button>`) : ''}
+    ${rdo.ajustes.length ? `<div class="secao-titulo">💰 Acréscimos e descontos lançados pelo app</div>
+      <div class="item-lista">${rdo.ajustes.map(a=>`<div class="item"><div class="item-txt">${a.tipo==='acrescimo'?'Acréscimo':'Desconto'}: ${esc(a.descricao)}<small>${fmtR$(a.valor)}</small></div></div>`).join('')}</div>
+      <div class="ajuda">Acréscimos e descontos agora são lançados só na Gestão de Frota.</div>` : ''}
     <div id="ajustes-escritorio"></div>
     <div class="campo" style="margin-top:6px"><span class="rotulo">Observação do dia</span>
       <textarea placeholder="Algo que o escritório precisa saber" oninput="rdo.ocorrencia_geral=this.value;autosalvar()">${esc(rdo.ocorrencia_geral)}</textarea></div>
