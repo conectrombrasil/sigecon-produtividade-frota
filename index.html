@@ -655,7 +655,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.13.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
+const CONFIG = { VERSAO_APP: '3.14.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -782,6 +782,8 @@ const Repo = {
     const obrasPorOp = {};
     if (!rOb.error) (rOb.data||[]).forEach(x=>{ (obrasPorOp[x.usuario_id] = obrasPorOp[x.usuario_id] || new Set()).add(String(x.obra_id)); });
     const mob = {}; ativos.forEach(a=>{ if (a.equipamento_id && a.contratos?.obra_id) mob[a.equipamento_id] = a.contratos.obra_id; });
+    // 3.14: equipamento liberado na obra antes do contrato (Gestão de Frota) também aparece, marcado "sem contrato"
+    const semCt = new Set(); equips.forEach(e=>{ if (!mob[e.id] && e.liberado_obra_id) { mob[e.id] = e.liberado_obra_id; semCt.add(e.id); } });
     // nomes dos operadores vinculados
     const idsOp = [...new Set(vinculos.map(v=>v.usuario_id))];
     let nomes = {};
@@ -796,7 +798,7 @@ const Repo = {
     let equipamentos = equips.filter(e=>mob[e.id]).map(e=>({
       id:e.id, obra_id:mob[e.id], fornecedor_id:e.fornecedor_id, descricao:e.descricao,
       prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null, frota_tipo_id:e.frota_tipo_id!=null?String(e.frota_tipo_id):null,
-      icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null, operadores: opsPorEquip[e.id] || [],
+      icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null, operadores: opsPorEquip[e.id] || [], sem_contrato: semCt.has(e.id),
     }));
     if (ehOperador()) equipamentos = equipamentos.filter(e=>e.operadores.some(o=>o.id===sessao.id));
     const eventos = listas.filter(l=>l.tipo==='evento');
@@ -1127,7 +1129,7 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 function iconeEquip(e){
   return `<span class="equip-ic">${esc(e?.icone||'🚜')}${e?.foto ? `<img src="${esc(e.foto)}" alt="" loading="lazy" onerror="this.remove()"/>` : ''}</span>`;
 }
-function nomeEquip(e){ return e ? e.descricao : 'Máquina fora da lista'; }
+function nomeEquip(e){ return e ? e.descricao + (e.sem_contrato ? ' · sem contrato' : '') : 'Máquina fora da lista'; }
 function idEquip(e){ return e ? (e.prefixo || e.placa || '') : ''; }
 function ehKm(e){ return e && e.tipo_franquia==='km'; }
 function rotuloMedidor(e){ return ehKm(e) ? 'Odômetro' : 'Horímetro'; }
