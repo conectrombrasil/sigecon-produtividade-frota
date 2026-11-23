@@ -655,7 +655,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.14.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
+const CONFIG = { VERSAO_APP: '3.15.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -818,7 +818,7 @@ const Repo = {
     let data;
     if (ehOperador()) data = (await this.catalogoDoOperador()).rdo;
     else {
-      const r = await sb.from('frota_rdo').select('id,obra_id,equipamento_id,data,horimetro_final,status_medicao')
+      const r = await sb.from('frota_rdo').select('id,obra_id,equipamento_id,data,horimetro_final,medidor_unidade,status_medicao')
         .gte('data', hojeISO(-CONFIG.DIAS_HISTORICO)).order('data', { ascending:false }).limit(5000);
       if (r.error) throw r.error; data = r.data;
     }
@@ -876,7 +876,10 @@ const Repo = {
   ultimoMedidor(equipId, antesDe){
     const todos = [...this.rdos(), ...this.servidor].filter(r=>r.equipamento_id===equipId && r.data<antesDe && r.horimetro_final!=null)
       .sort((a,b)=>b.data.localeCompare(a.data));
-    return todos[0] ? { valor: todos[0].horimetro_final, data: todos[0].data } : null;
+    // 3.15: leitura de outra unidade (era horímetro e agora é odômetro, ou o contrário) não serve de leitura inicial
+    const un = unidMedidor(this.equipamento(equipId));
+    if (todos[0] && todos[0].medidor_unidade && todos[0].medidor_unidade!==un) return null;
+    return todos[0] ? { valor: todos[0].horimetro_final, data: todos[0].data, unidade: todos[0].medidor_unidade || null } : null;
   },
   async salvar(rec, pendente){
     if (pendente!==false) { rec._pendente = true; rec.editado_em = new Date().toISOString(); }
@@ -1023,6 +1026,7 @@ async function enviarParaFrotaRdo(r){
     obra_id:r.obra_id, equipamento_id:r.equipamento_id, data:r.data,
     operador:r.operador||null, matricula:r.matricula||null,
     horimetro_inicial:r.horimetro_inicial, horimetro_final:r.horimetro_final,
+    medidor_unidade: r.medidor_unidade || unidMedidor(Repo.equipamento(r.equipamento_id)),   // 3.15: 'h' ou 'km', gravado junto com a leitura
     ocorrencia_geral:r.ocorrencia_geral||null,
     grade:r.grade, manutencoes:r.manutencoes, abastecimentos:r.abastecimentos,
     assinaturas: Object.assign({ app_id:r.id, origem:'app-campo', versao_app:CONFIG.VERSAO_APP }, r.assinaturas, { anuladas:r.assinaturas_anuladas||[], historico:r.historico||[] }),
@@ -1526,7 +1530,7 @@ function renderHome(){
         ${r.mensagem && (r.fluxo==='devolvido'||r.fluxo==='contestado') ? `<div class="card-msg">💬 ${esc(r.mensagem)}</div>` : ''}
         ${reguaMini(r.grade||{})}
         <div class="card-rodape"><span><b>${res.ativ}h</b> em atividade</span><span>${res.apontadas}h apontadas</span>
-          ${delta!=null?`<span style="margin-left:auto">${fmtNum(delta)} ${unidMedidor(e)}</span>`:''}</div>
+          ${delta!=null?`<span style="margin-left:auto">${fmtNum(delta)} ${r.medidor_unidade || unidMedidor(e)}</span>`:''}</div>
       </button>`;
     });
   }
@@ -1854,8 +1858,8 @@ function passoDia(){
       <div class="campo"><span class="rotulo">Matrícula</span><input type="text" inputmode="numeric" value="${esc(rdo.matricula)}" oninput="rdo.matricula=this.value;autosalvar()"/></div>
     </div>
     <div class="linha2">
-      <div class="campo"><span class="rotulo">${rot} inicial (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(ini)}" onchange="rdo.horimetro_inicial=parseNum(this.value);autosalvar();renderRdo()"/></div>
-      <div class="campo"><span class="rotulo">${rot} final (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(fim)}" placeholder="No fim do dia" onchange="rdo.horimetro_final=parseNum(this.value);autosalvar();renderRdo()"/></div>
+      <div class="campo"><span class="rotulo">${rot} inicial (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(ini)}" onchange="rdo.horimetro_inicial=parseNum(this.value);rdo.medidor_unidade=unidMedidor(Repo.equipamento(rdo.equipamento_id));autosalvar();renderRdo()"/></div>
+      <div class="campo"><span class="rotulo">${rot} final (${un})</span><input type="text" inputmode="decimal" value="${numParaCampo(fim)}" placeholder="No fim do dia" onchange="rdo.horimetro_final=parseNum(this.value);rdo.medidor_unidade=unidMedidor(Repo.equipamento(rdo.equipamento_id));autosalvar();renderRdo()"/></div>
     </div>
     ${ajudaMed}
     <div class="barra-acao"><button class="btn" ${dup||dupSistema?'disabled':''} onclick="irPasso(2)">Continuar para as horas</button></div>`;
