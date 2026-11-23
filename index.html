@@ -655,7 +655,7 @@
 /* =====================================================================
    CONFIGURAÇÃO — mesmo projeto Supabase do SIGECON (gestão de frota)
    ===================================================================== */
-const CONFIG = { VERSAO_APP: '3.15.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
+const CONFIG = { VERSAO_APP: '3.17.0', DIAS_HISTORICO: 45, ASSINA_AQUI_SO_ADMIN: false };   // 3.12: operador assina no celular do apontador (liberado para todos os apontadores)
 // Guardado antes de o Supabase ler (e limpar) o endereço do link de recuperação
 const ENDERECO_INICIAL = location.hash + ' ' + location.search;
 const SUPABASE_URL = 'https://adfrybyxcamkuyewzyns.supabase.co';
@@ -756,7 +756,7 @@ const Repo = {
         equipamentos: (d.equipamentos||[]).map(e=>({
           id:e.id, obra_id:e.obra_id, fornecedor_id:e.fornecedor_id, descricao:e.descricao,
           prefixo:e.prefixo||null, placa:e.placa||null, tipo_franquia:e.tipo_franquia||null, frota_tipo_id:e.frota_tipo_id!=null?String(e.frota_tipo_id):null,
-          icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null,
+          icone: ICONE_CATEGORIA[e.frota_tipos?.categoria] || '🚜', foto: e.frota_tipos?.foto_url || null, sem_contrato: !!e.sem_contrato,
           operadores:[{ id:sessao.id, nome:sessao.nome, matricula:sessao.matricula||'' }] })),
         eventos: eventos.map((ev,i)=>({ nome:ev.nome, codigo:ev.codigo||'', chave_fixa:ev.chave_fixa||null, cor:corDoEvento(ev,i) })),
         atividades: listas.filter(l=>l.tipo==='atividade').map(l=>({ obra_id:l.obra_id, nome:l.nome, codigo:l.codigo||'', tipos:(l.frota_tipos||[]).map(String) })),
@@ -784,6 +784,9 @@ const Repo = {
     const mob = {}; ativos.forEach(a=>{ if (a.equipamento_id && a.contratos?.obra_id) mob[a.equipamento_id] = a.contratos.obra_id; });
     // 3.14: equipamento liberado na obra antes do contrato (Gestão de Frota) também aparece, marcado "sem contrato"
     const semCt = new Set(); equips.forEach(e=>{ if (!mob[e.id] && e.liberado_obra_id) { mob[e.id] = e.liberado_obra_id; semCt.add(e.id); } });
+    // 3.16: vistoria de mobilização numa obra também coloca a máquina lá (automático, sem contrato)
+    const porVist = await _buscarObraPorVistoria();
+    Object.entries(porVist).forEach(([id, x])=>{ if (!mob[id]) { mob[id] = x.obra_id; semCt.add(id); } });
     // nomes dos operadores vinculados
     const idsOp = [...new Set(vinculos.map(v=>v.usuario_id))];
     let nomes = {};
@@ -1132,6 +1135,22 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 // Foto cadastrada no tipo do equipamento (gestão de frota); sem foto, o ícone
 function iconeEquip(e){
   return `<span class="equip-ic">${esc(e?.icone||'🚜')}${e?.foto ? `<img src="${esc(e.foto)}" alt="" loading="lazy" onerror="this.remove()"/>` : ''}</span>`;
+}
+// 23/11: equipamento com vistoria de mobilização numa obra (e sem vistoria de desmobilização depois) está nessa obra,
+// mesmo antes de existir contrato. Devolve { equipamento_id: { obra_id, obra_nome, data } }.
+function _obraPorVistoria(vs){
+  const fechadas = new Set((vs||[]).filter(v=>v.tipo==='desmobilizacao' && v.vistoria_mob_id).map(v=>v.vistoria_mob_id));
+  const ultDesmob = {}; (vs||[]).filter(v=>v.tipo==='desmobilizacao').forEach(v=>{ if (!ultDesmob[v.equipamento_id] || v.data_vistoria > ultDesmob[v.equipamento_id]) ultDesmob[v.equipamento_id] = v.data_vistoria; });
+  const out = {};
+  (vs||[]).filter(v=>v.tipo==='mobilizacao' && v.obra_id && v.status!=='cancelada' && !fechadas.has(v.id))
+    .sort((a,b)=>String(b.data_vistoria).localeCompare(String(a.data_vistoria)))
+    .forEach(v=>{ if (out[v.equipamento_id]) return; if (ultDesmob[v.equipamento_id] && ultDesmob[v.equipamento_id] > v.data_vistoria) return;
+      out[v.equipamento_id] = { obra_id: v.obra_id, obra_nome: v.obra_nome || '', data: String(v.data_vistoria||'').slice(0,10) }; });
+  return out;
+}
+async function _buscarObraPorVistoria(){
+  try { const r = await sb.from('frota_vistorias').select('id,equipamento_id,obra_id,obra_nome,tipo,status,data_vistoria,vistoria_mob_id').not('equipamento_id','is',null).in('tipo',['mobilizacao','desmobilizacao']);
+        return r.error ? {} : _obraPorVistoria(r.data); } catch (e) { return {}; }
 }
 function nomeEquip(e){ return e ? e.descricao + (e.sem_contrato ? ' · sem contrato' : '') : 'Máquina fora da lista'; }
 function idEquip(e){ return e ? (e.prefixo || e.placa || '') : ''; }
